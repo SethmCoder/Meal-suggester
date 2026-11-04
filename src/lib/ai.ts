@@ -67,7 +67,7 @@ export async function rankWithModel(input: {
           {
             role: 'system',
             content:
-              'You plan meals for Planora. Choose only from the retrieved recipe catalog. Never invent recipes, URLs, or cook times. Allergies and dietary restrictions are strict. When dayThemes are provided, match each day\'s cuisine/theme as closely as the catalog allows and vary picks across the week. Fill every target cell you can with distinct recipes. Return JSON only: {"reply": string, "picks": [{"providerId": string, "day": string, "slot": string, "why": string}]}. Days must be monday through friday. Slots must be breakfast, lunch, or dinner. Use only the requested target cells.',
+              'You plan meals for Planora. Choose only from the retrieved recipe catalog. Never invent recipes, URLs, or cook times. Allergies and dietary restrictions are strict. When dayThemes are provided, match each day\'s cuisine/theme as closely as the catalog allows. You MUST return exactly one pick for EVERY target cell — never leave weekday slots empty. Prefer distinct recipes; reuse a catalog recipe only if there are fewer recipes than targets. Return JSON only: {"reply": string, "picks": [{"providerId": string, "day": string, "slot": string, "why": string}]}. Days must be monday through friday. Slots must be breakfast, lunch, or dinner. Use only the requested target cells.',
           },
           {
             role: 'user',

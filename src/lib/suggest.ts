@@ -27,6 +27,7 @@ function searchTerms(
   inventory: InventoryItem[],
   preferences: Preferences,
   dayThemes?: Partial<Record<Weekday, string>>,
+  wantWeek?: boolean,
 ): string[] {
   const request = parsePlanRequest(message)
   const words = request.queryText.split(/\s+/).filter((word) => word.length > 2)
@@ -38,15 +39,19 @@ function searchTerms(
   const themeTerms = Object.values(dayThemes ?? {})
     .flatMap((theme) => theme.toLowerCase().split(/[^a-z0-9]+/))
     .filter((word) => word.length > 2)
+  const weekFillers = wantWeek
+    ? ['chicken', 'pasta', 'salad', 'egg', 'rice', 'fish', 'beef', 'soup', 'bean', 'potato', 'breakfast', 'sandwich']
+    : []
   const terms = [
     ...themeTerms,
     ...words,
     ...preferences.favorites.slice(0, 2),
     ...preferences.cuisines.slice(0, 2),
+    ...weekFillers,
   ]
   if (request.preferInventory || terms.length === 0) terms.push(...inventoryTerms)
   if (terms.length === 0) terms.push(...fallbackSearchTerms(preferences))
-  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, 10)
+  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, wantWeek ? 12 : 10)
 }
 
 function resolveTargets(
@@ -69,6 +74,35 @@ function resolveTargets(
   return targets
 }
 
+function backfillSuggestions(input: {
+  existing: Suggestion[]
+  recipes: Awaited<ReturnType<typeof retrieveRecipes>>['recipes']
+  targets: MealCell[]
+  inventory: InventoryItem[]
+  preferences: Preferences
+  feedback: MealFeedback[]
+  dayThemes?: Partial<Record<Weekday, string>>
+}): Suggestion[] {
+  const filled = new Set(input.existing.map((item) => `${item.day}:${item.slot}`))
+  const missing = input.targets.filter((cell) => !filled.has(`${cell.day}:${cell.slot}`))
+  if (!missing.length) return input.existing
+
+  const usedIds = new Set(input.existing.map((item) => item.recipe.providerId))
+  const unusedRecipes = input.recipes.filter((recipe) => !usedIds.has(recipe.providerId))
+  const pool = unusedRecipes.length ? unusedRecipes : input.recipes
+  const filler = selectSuggestions({
+    recipes: pool,
+    targets: missing,
+    inventory: input.inventory,
+    preferences: input.preferences,
+    feedback: input.feedback,
+    preferInventory: false,
+    dayThemes: input.dayThemes,
+    allowReuse: true,
+  })
+  return [...input.existing, ...filler.suggestions]
+}
+
 export async function suggestMeals(input: {
   message: string
   inventory: InventoryItem[]
@@ -78,16 +112,18 @@ export async function suggestMeals(input: {
   options?: SuggestOptions
 }): Promise<AssistantResult> {
   const request = parsePlanRequest(input.message)
+  const wantWeek = Boolean(input.options?.wantWeek || request.wantWeek)
   const preliminary = resolveTargets(request, input.week.cells, input.options)
-  const constraints = constraintUpdates(input.message, { ...request, wantWeek: input.options?.wantWeek || request.wantWeek }, preliminary)
+  const constraints = constraintUpdates(input.message, { ...request, wantWeek }, preliminary)
   const cells = input.week.cells.map((cell) => {
     const next = constraints.find((item) => item.day === cell.day && item.slot === cell.slot)
     return next ? { ...cell, constraint: next.constraint } : cell
   })
   const targets = resolveTargets(request, cells, input.options)
   const { recipes, broadened, preferredHits } = await retrieveRecipes(
-    searchTerms(input.message, input.inventory, input.preferences, input.options?.dayThemes),
+    searchTerms(input.message, input.inventory, input.preferences, input.options?.dayThemes, wantWeek),
     input.preferences.recipeSites,
+    { minCount: wantWeek ? Math.max(targets.length + 5, 24) : 14 },
   )
   const local = selectSuggestions({
     recipes,
@@ -95,9 +131,9 @@ export async function suggestMeals(input: {
     inventory: input.inventory,
     preferences: input.preferences,
     feedback: input.feedback,
-    // Whole-week fills need a wide catalog; only hard-filter to inventory when the user asks.
-    preferInventory: input.options?.wantWeek ? request.preferInventory : true,
+    preferInventory: wantWeek ? request.preferInventory : true,
     dayThemes: input.options?.dayThemes,
+    allowReuse: wantWeek,
   })
 
   let suggestions = local.suggestions
@@ -122,7 +158,9 @@ export async function suggestMeals(input: {
       dayThemes: input.options?.dayThemes,
     })
     if (ranked && ranked.picks.length) {
-      const fromModel = picksToSuggestions(ranked.picks, recipes, targets, input.preferences)
+      const fromModel = picksToSuggestions(ranked.picks, recipes, targets, input.preferences, {
+        allowReuse: wantWeek,
+      })
       if (fromModel.length) {
         suggestions = fromModel
         mode = 'ai'
@@ -131,6 +169,21 @@ export async function suggestMeals(input: {
     } else if (ranked?.reply) {
       mode = 'ai'
       reply = ranked.reply
+    }
+  }
+
+  if (wantWeek && suggestions.length < targets.length) {
+    suggestions = backfillSuggestions({
+      existing: suggestions,
+      recipes,
+      targets,
+      inventory: input.inventory,
+      preferences: input.preferences,
+      feedback: input.feedback,
+      dayThemes: input.options?.dayThemes,
+    })
+    if (suggestions.length) {
+      reply = `${reply} Filled ${suggestions.length} of ${targets.length} weekday meal slots.`
     }
   }
 
@@ -179,6 +232,7 @@ function picksToSuggestions(
   recipes: Awaited<ReturnType<typeof retrieveRecipes>>['recipes'],
   targets: MealCell[],
   preferences: Preferences,
+  options?: { allowReuse?: boolean },
 ): Suggestion[] {
   const byId = new Map(recipes.map((recipe) => [recipe.providerId, recipe]))
   const allowed = new Set(targets.map((cell) => `${cell.day}:${cell.slot}`))
@@ -187,7 +241,8 @@ function picksToSuggestions(
   const suggestions: Suggestion[] = []
   for (const pick of picks) {
     const cellKey = `${pick.day}:${pick.slot}`
-    if (!allowed.has(cellKey) || usedCell.has(cellKey) || usedRecipe.has(pick.providerId)) continue
+    if (!allowed.has(cellKey) || usedCell.has(cellKey)) continue
+    if (usedRecipe.has(pick.providerId) && !options?.allowReuse) continue
     const recipe = byId.get(pick.providerId)
     if (!recipe) continue
     const names = recipe.ingredients.map((item) => item.name)
@@ -197,9 +252,11 @@ function picksToSuggestions(
     const cap = cell?.constraint?.maxMinutes ?? null
     const minutes = totalMinutes(recipe)
     if (cap != null && minutes != null && minutes > cap) continue
+    const reused = usedRecipe.has(pick.providerId)
     usedRecipe.add(pick.providerId)
     usedCell.add(cellKey)
     const reasons = [pick.why || 'Selected from retrieved recipes.']
+    if (reused) reasons.push('Repeated because fewer unique recipes were available than meal slots')
     if (recipe.timeIsEstimated) reasons.push('Time is estimated from the instructions, not published by the source page.')
     suggestions.push({
       day: pick.day,

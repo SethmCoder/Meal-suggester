@@ -77,27 +77,69 @@ async function lookupMealDb(id: string): Promise<RetrievedRecipe | null> {
   return recipe
 }
 
-async function searchMealDbByName(term: string): Promise<RetrievedRecipe[]> {
+async function searchMealDbByName(term: string, limit = 4): Promise<RetrievedRecipe[]> {
   const payload = await fetchJson<{ meals: MealDbMeal[] | null }>(`${MEALDB}/search.php?s=${encodeURIComponent(term)}`)
-  return (payload.meals ?? []).slice(0, 4).map((meal) => {
+  return (payload.meals ?? []).slice(0, limit).map((meal) => {
     const recipe = mapMealDb(meal)
     cache.set(recipe.providerId, recipe)
     return recipe
   })
 }
 
-async function mealDbIdsByIngredient(term: string): Promise<string[]> {
+async function mealDbIdsByIngredient(term: string, limit = 3): Promise<string[]> {
   const ingredient = term.trim().toLowerCase().replace(/\s+/g, '_')
   if (!ingredient) return []
   const payload = await fetchJson<{ meals: { idMeal: string }[] | null }>(`${MEALDB}/filter.php?i=${encodeURIComponent(ingredient)}`)
-  return (payload.meals ?? []).slice(0, 3).map((meal) => meal.idMeal)
+  return (payload.meals ?? []).slice(0, limit).map((meal) => meal.idMeal)
 }
 
-async function mealDbIdsByCategory(category: string): Promise<string[]> {
+async function mealDbIdsByCategory(category: string, limit = 4): Promise<string[]> {
   const payload = await fetchJson<{ meals: { idMeal: string }[] | null }>(
     `${MEALDB}/filter.php?c=${encodeURIComponent(category)}`,
   )
-  return (payload.meals ?? []).slice(0, 4).map((meal) => meal.idMeal)
+  return (payload.meals ?? []).slice(0, limit).map((meal) => meal.idMeal)
+}
+
+async function mealDbIdsByArea(area: string, limit = 6): Promise<string[]> {
+  const payload = await fetchJson<{ meals: { idMeal: string }[] | null }>(
+    `${MEALDB}/filter.php?a=${encodeURIComponent(area)}`,
+  )
+  return (payload.meals ?? []).slice(0, limit).map((meal) => meal.idMeal)
+}
+
+const AREA_ALIASES: Record<string, string> = {
+  italian: 'Italian',
+  mexico: 'Mexican',
+  mexican: 'Mexican',
+  taco: 'Mexican',
+  tacos: 'Mexican',
+  japanese: 'Japanese',
+  chinese: 'Chinese',
+  indian: 'Indian',
+  thai: 'Thai',
+  french: 'French',
+  american: 'American',
+  british: 'British',
+  greek: 'Greek',
+  spanish: 'Spanish',
+  mediterranean: 'Greek',
+}
+
+function areaForTerm(term: string): string | null {
+  const key = term.trim().toLowerCase()
+  return AREA_ALIASES[key] ?? null
+}
+
+async function addMealDbIds(
+  unique: Map<string, RetrievedRecipe>,
+  ids: string[],
+  hardCap: number,
+) {
+  for (const id of ids) {
+    if (unique.size >= hardCap) return
+    const recipe = await lookupMealDb(id)
+    if (recipe) unique.set(recipe.providerId, recipe)
+  }
 }
 
 interface SpoonacularResult {
@@ -202,59 +244,77 @@ function rankByPreferredSources(recipes: RetrievedRecipe[], publishers: RecipePu
   })
 }
 
+export interface RetrieveOptions {
+  /** Aim to collect at least this many distinct recipes (default 14). */
+  minCount?: number
+}
+
 export async function retrieveRecipes(
   terms: string[],
   preferredSiteIds: string[] = [],
+  options?: RetrieveOptions,
 ): Promise<{ recipes: RetrievedRecipe[]; broadened: boolean; preferredHits: number }> {
+  const minCount = options?.minCount ?? 14
+  const hardCap = Math.max(minCount + 12, 36)
+  const nameLimit = minCount >= 20 ? 10 : 4
+  const ingredientLimit = minCount >= 20 ? 8 : 3
+  const spoonLimit = minCount >= 20 ? 12 : 6
   const unique = new Map<string, RetrievedRecipe>()
   const spoonKey = import.meta.env.VITE_SPOONACULAR_API_KEY
   const publishers = preferredPublishers(preferredSiteIds)
+  const termList = terms.slice(0, minCount >= 20 ? 10 : 8)
 
-  for (const [index, term] of terms.slice(0, 8).entries()) {
+  for (const [index, term] of termList.entries()) {
     const trimmed = term.trim()
     if (!trimmed) continue
+    if (unique.size >= hardCap) break
 
     // Preferred sites first via local scrape API (no Spoonacular required).
-    if (publishers.length && index < 2) {
+    if (publishers.length && index < (minCount >= 20 ? 4 : 2)) {
       const scraped = await searchPreferredSites(trimmed, preferredSiteIds)
       for (const recipe of scraped) unique.set(recipe.providerId, recipe)
     }
 
-    const named = await searchMealDbByName(trimmed)
+    const named = await searchMealDbByName(trimmed, nameLimit)
     for (const recipe of named) unique.set(recipe.providerId, recipe)
-    const ids = await mealDbIdsByIngredient(trimmed)
-    for (const id of ids) {
-      if (unique.size >= 16) break
-      const recipe = await lookupMealDb(id)
-      if (recipe) unique.set(recipe.providerId, recipe)
-    }
+
+    await addMealDbIds(unique, await mealDbIdsByIngredient(trimmed, ingredientLimit), hardCap)
+
+    const area = areaForTerm(trimmed)
+    if (area) await addMealDbIds(unique, await mealDbIdsByArea(area, 8), hardCap)
+
     if (spoonKey) {
-      const extra = await searchSpoonacular(trimmed, spoonKey, 6)
+      const extra = await searchSpoonacular(trimmed, spoonKey, spoonLimit)
       for (const recipe of extra) unique.set(recipe.providerId, recipe)
 
-      // Optional Spoonacular bias when preferred publishers are selected.
       for (const publisher of publishers.slice(0, 3)) {
-        if (unique.size >= 20) break
+        if (unique.size >= hardCap) break
         const biased = await searchSpoonacular(`${trimmed} ${publisher.searchHint}`, spoonKey, 4)
         for (const recipe of biased) unique.set(recipe.providerId, recipe)
       }
     }
-    if (unique.size >= 16) break
   }
 
   let broadened = false
-  if (unique.size === 0) {
+  if (unique.size < minCount) {
     broadened = true
-    const ids = await mealDbIdsByCategory('Vegetarian')
-    const more = await mealDbIdsByCategory('Breakfast')
-    for (const id of [...ids, ...more]) {
-      if (unique.size >= 8) break
-      const recipe = await lookupMealDb(id)
-      if (recipe) unique.set(recipe.providerId, recipe)
+    const categories =
+      minCount >= 20
+        ? ['Breakfast', 'Chicken', 'Seafood', 'Pasta', 'Vegetarian', 'Beef', 'Dessert', 'Side', 'Starter', 'Miscellaneous']
+        : ['Vegetarian', 'Breakfast']
+    for (const category of categories) {
+      if (unique.size >= minCount) break
+      await addMealDbIds(unique, await mealDbIdsByCategory(category, minCount >= 20 ? 8 : 4), hardCap)
+    }
+    const fillerTerms = ['chicken', 'pasta', 'salad', 'egg', 'rice', 'fish', 'beef', 'soup', 'bean', 'potato']
+    for (const term of fillerTerms) {
+      if (unique.size >= minCount) break
+      const named = await searchMealDbByName(term, 8)
+      for (const recipe of named) unique.set(recipe.providerId, recipe)
     }
   }
 
   const ranked = rankByPreferredSources([...unique.values()], publishers)
   const preferredHits = ranked.filter((recipe) => matchesPublisher(recipe, publishers)).length
-  return { recipes: ranked.slice(0, 14), broadened, preferredHits }
+  return { recipes: ranked.slice(0, hardCap), broadened, preferredHits }
 }

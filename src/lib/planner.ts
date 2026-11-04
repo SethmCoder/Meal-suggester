@@ -146,6 +146,8 @@ export function selectSuggestions(input: {
   feedback: MealFeedback[]
   preferInventory: boolean
   dayThemes?: Partial<Record<MealCell['day'], string>>
+  /** When true, reuse recipes after the unique pool is exhausted so every target can be filled. */
+  allowReuse?: boolean
 }): { suggestions: Suggestion[]; relaxedDislikes: boolean } {
   const rejected = new Set(
     input.feedback.filter((item) => !item.accepted).map((item) => ingredientKey(item.mealName)),
@@ -175,13 +177,17 @@ export function selectSuggestions(input: {
   for (const cell of input.targets) {
     const cap = cell.constraint?.maxMinutes ?? null
     const theme = input.dayThemes?.[cell.day]
-    const timed = scored.filter((item) => !used.has(item.recipe.providerId) && fitsTime(item.recipe, cap))
-    const themed = theme ? timed.filter((item) => matchesDayTheme(item.recipe, theme)) : []
-    const best = themed[0] ?? timed[0]
+    const timed = scored.filter((item) => fitsTime(item.recipe, cap))
+    const unused = timed.filter((item) => !used.has(item.recipe.providerId))
+    const pool = unused.length ? unused : input.allowReuse ? timed : []
+    const themed = theme ? pool.filter((item) => matchesDayTheme(item.recipe, theme)) : []
+    const best = themed[0] ?? pool[0]
     if (!best) continue
+    const reused = used.has(best.recipe.providerId)
     used.add(best.recipe.providerId)
     const reasons = [...best.reasons]
     if (theme && themed[0]) reasons.unshift(`Matches ${cell.day} theme: ${theme}`)
+    if (reused) reasons.push('Repeated because fewer unique recipes were available than meal slots')
     suggestions.push({
       day: cell.day,
       slot: cell.slot,

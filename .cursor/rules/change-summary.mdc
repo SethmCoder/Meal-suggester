@@ -1,18 +1,26 @@
 ---
-description: Always end substantive work with a 25-word change summary
+description: End changes with Summary, short title, then description
 alwaysApply: true
 ---
 
-# 25-word change summary
+# Change summary format
 
-After completing any code, config, or product change in this project, end your reply with a **exactly ~25 word** summary of what changed.
+After completing any code, config, or product change in this project, end your reply with this GitHub-style block:
 
-Format (required):
 **Summary**
-Then the ~25-word summary on the next line (or immediately after).
+Short title
+
+Description (~25 words) of the user-facing outcome.
+
+Example:
+**Summary**
+Fill entire week with meals
+
+Whole-week planning now fetches a bigger recipe catalog and fills every weekday slot, backfilling gaps when needed.
 
 Rules:
-- Use bold **Summary** as the label (not "Summary:")
-- One plain sentence (or two short ones) totaling about 25 words
-- Cover the user-facing outcome, not a file list
-- Skip the summary only for pure Q&A with no changes made
+- Bold label must be exactly **Summary**
+- Next line: short title (like a PR/commit title)
+- Then a blank line
+- Then a ~25-word description (not a file list)
+- Skip only for pure Q&A with no changes made
