@@ -210,7 +210,7 @@ export async function retrieveRecipes(
   const spoonKey = import.meta.env.VITE_SPOONACULAR_API_KEY
   const publishers = preferredPublishers(preferredSiteIds)
 
-  for (const [index, term] of terms.slice(0, 4).entries()) {
+  for (const [index, term] of terms.slice(0, 8).entries()) {
     const trimmed = term.trim()
     if (!trimmed) continue
 

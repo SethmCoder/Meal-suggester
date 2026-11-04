@@ -1,0 +1,18 @@
+---
+description: Always end substantive work with a 25-word change summary
+alwaysApply: true
+---
+
+# 25-word change summary
+
+After completing any code, config, or product change in this project, end your reply with a **exactly ~25 word** summary of what changed.
+
+Format (required):
+**Summary**
+Then the ~25-word summary on the next line (or immediately after).
+
+Rules:
+- Use bold **Summary** as the label (not "Summary:")
+- One plain sentence (or two short ones) totaling about 25 words
+- Cover the user-facing outcome, not a file list
+- Skip the summary only for pure Q&A with no changes made

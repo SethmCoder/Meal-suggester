@@ -1,4 +1,4 @@
-import type { InventoryItem, MealCell, MealFeedback, Preferences, WeekPlan } from '../data/types'
+import type { InventoryItem, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
 import { aiConfigured, rankWithModel } from './ai'
 import { constraintUpdates, parsePlanRequest, targetCells } from './constraints'
 import { allergyConflict, dietConflict } from './diet'
@@ -15,7 +15,19 @@ export interface AssistantResult {
   warning?: string
 }
 
-function searchTerms(message: string, inventory: InventoryItem[], preferences: Preferences): string[] {
+export interface SuggestOptions {
+  wantWeek?: boolean
+  emptyOnly?: boolean
+  slots?: MealSlot[]
+  dayThemes?: Partial<Record<Weekday, string>>
+}
+
+function searchTerms(
+  message: string,
+  inventory: InventoryItem[],
+  preferences: Preferences,
+  dayThemes?: Partial<Record<Weekday, string>>,
+): string[] {
   const request = parsePlanRequest(message)
   const words = request.queryText.split(/\s+/).filter((word) => word.length > 2)
   const inventoryTerms = [...inventory]
@@ -23,10 +35,38 @@ function searchTerms(message: string, inventory: InventoryItem[], preferences: P
     .map((item) => ingredientKey(item.name))
     .filter(Boolean)
     .slice(0, 4)
-  const terms = [...words, ...preferences.favorites.slice(0, 2), ...preferences.cuisines.slice(0, 2)]
+  const themeTerms = Object.values(dayThemes ?? {})
+    .flatMap((theme) => theme.toLowerCase().split(/[^a-z0-9]+/))
+    .filter((word) => word.length > 2)
+  const terms = [
+    ...themeTerms,
+    ...words,
+    ...preferences.favorites.slice(0, 2),
+    ...preferences.cuisines.slice(0, 2),
+  ]
   if (request.preferInventory || terms.length === 0) terms.push(...inventoryTerms)
   if (terms.length === 0) terms.push(...fallbackSearchTerms(preferences))
-  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, 6)
+  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, 10)
+}
+
+function resolveTargets(
+  request: ReturnType<typeof parsePlanRequest>,
+  cells: MealCell[],
+  options?: SuggestOptions,
+): MealCell[] {
+  const nextRequest = {
+    ...request,
+    wantWeek: options?.wantWeek || request.wantWeek,
+    slots: options?.slots?.length ? options.slots : request.slots,
+  }
+  let targets = targetCells(nextRequest, cells)
+  if (options?.slots?.length) {
+    targets = targets.filter((cell) => options.slots!.includes(cell.slot))
+  }
+  if (options?.emptyOnly) {
+    targets = targets.filter((cell) => !cell.meal)
+  }
+  return targets
 }
 
 export async function suggestMeals(input: {
@@ -35,17 +75,18 @@ export async function suggestMeals(input: {
   preferences: Preferences
   week: WeekPlan
   feedback: MealFeedback[]
+  options?: SuggestOptions
 }): Promise<AssistantResult> {
   const request = parsePlanRequest(input.message)
-  const preliminary = targetCells(request, input.week.cells)
-  const constraints = constraintUpdates(input.message, request, preliminary)
+  const preliminary = resolveTargets(request, input.week.cells, input.options)
+  const constraints = constraintUpdates(input.message, { ...request, wantWeek: input.options?.wantWeek || request.wantWeek }, preliminary)
   const cells = input.week.cells.map((cell) => {
     const next = constraints.find((item) => item.day === cell.day && item.slot === cell.slot)
     return next ? { ...cell, constraint: next.constraint } : cell
   })
-  const targets = targetCells(request, cells)
+  const targets = resolveTargets(request, cells, input.options)
   const { recipes, broadened, preferredHits } = await retrieveRecipes(
-    searchTerms(input.message, input.inventory, input.preferences),
+    searchTerms(input.message, input.inventory, input.preferences, input.options?.dayThemes),
     input.preferences.recipeSites,
   )
   const local = selectSuggestions({
@@ -54,7 +95,9 @@ export async function suggestMeals(input: {
     inventory: input.inventory,
     preferences: input.preferences,
     feedback: input.feedback,
-    preferInventory: true,
+    // Whole-week fills need a wide catalog; only hard-filter to inventory when the user asks.
+    preferInventory: input.options?.wantWeek ? request.preferInventory : true,
+    dayThemes: input.options?.dayThemes,
   })
 
   let suggestions = local.suggestions
@@ -66,6 +109,7 @@ export async function suggestMeals(input: {
     local.relaxedDislikes,
     input.preferences.instructions,
     preferredHits,
+    input.options?.dayThemes,
   )
 
   if (aiConfigured()) {
@@ -75,6 +119,7 @@ export async function suggestMeals(input: {
       targets: targets.map((cell) => ({ day: cell.day, slot: cell.slot })),
       preferences: input.preferences,
       inventoryNames: input.inventory.map((item) => item.name),
+      dayThemes: input.options?.dayThemes,
     })
     if (ranked && ranked.picks.length) {
       const fromModel = picksToSuggestions(ranked.picks, recipes, targets, input.preferences)
@@ -103,12 +148,17 @@ function matchReply(
   relaxedDislikes: boolean,
   instructions: string,
   preferredHits: number,
+  dayThemes?: Partial<Record<Weekday, string>>,
 ): string {
   const parts = [
     suggestions.length
       ? `I matched ${suggestions.length} retrieved recipe${suggestions.length === 1 ? '' : 's'} for ${targets.length} meal${targets.length === 1 ? '' : 's'}.`
       : 'I could not match a retrieved recipe to that request.',
   ]
+  const themedDays = Object.entries(dayThemes ?? {}).filter(([, theme]) => theme.trim()).length
+  if (themedDays > 0) {
+    parts.push(`Day themes were applied for ${themedDays} day${themedDays === 1 ? '' : 's'}.`)
+  }
   if (preferredHits > 0) {
     parts.push(
       `${preferredHits} retrieved result${preferredHits === 1 ? '' : 's'} came from your preferred recipe sites.`,

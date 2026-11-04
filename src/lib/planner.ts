@@ -127,6 +127,17 @@ function scoreRecipe(
   return { recipe, value, reasons, using }
 }
 
+function matchesDayTheme(recipe: RetrievedRecipe, theme: string | undefined): boolean {
+  if (!theme?.trim()) return false
+  const terms = theme
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((term) => term.length > 2)
+  if (!terms.length) return false
+  const hay = `${recipe.name} ${recipe.cuisineHint ?? ''} ${recipe.ingredients.map((item) => item.name).join(' ')}`.toLowerCase()
+  return terms.some((term) => hay.includes(term))
+}
+
 export function selectSuggestions(input: {
   recipes: RetrievedRecipe[]
   targets: MealCell[]
@@ -134,6 +145,7 @@ export function selectSuggestions(input: {
   preferences: Preferences
   feedback: MealFeedback[]
   preferInventory: boolean
+  dayThemes?: Partial<Record<MealCell['day'], string>>
 }): { suggestions: Suggestion[]; relaxedDislikes: boolean } {
   const rejected = new Set(
     input.feedback.filter((item) => !item.accepted).map((item) => ingredientKey(item.mealName)),
@@ -162,15 +174,20 @@ export function selectSuggestions(input: {
   const suggestions: Suggestion[] = []
   for (const cell of input.targets) {
     const cap = cell.constraint?.maxMinutes ?? null
-    const best = scored.find((item) => !used.has(item.recipe.providerId) && fitsTime(item.recipe, cap))
+    const theme = input.dayThemes?.[cell.day]
+    const timed = scored.filter((item) => !used.has(item.recipe.providerId) && fitsTime(item.recipe, cap))
+    const themed = theme ? timed.filter((item) => matchesDayTheme(item.recipe, theme)) : []
+    const best = themed[0] ?? timed[0]
     if (!best) continue
     used.add(best.recipe.providerId)
+    const reasons = [...best.reasons]
+    if (theme && themed[0]) reasons.unshift(`Matches ${cell.day} theme: ${theme}`)
     suggestions.push({
       day: cell.day,
       slot: cell.slot,
       recipe: best.recipe,
       meal: recipeToMeal(best.recipe),
-      reasons: best.reasons,
+      reasons,
     })
   }
 

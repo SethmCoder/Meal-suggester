@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { AiChat } from '../components/AiChat'
 import { MealCellCard, MealDetails } from '../components/MealCellCard'
 import { MealEditorModal } from '../components/MealEditorModal'
+import { PlanWholeWeek } from '../components/PlanWholeWeek'
 import { ShoppingPanel } from '../components/ShoppingPanel'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
@@ -139,6 +140,38 @@ export function MealsPage() {
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
+
+      {week && preferences ? (
+        <PlanWholeWeek
+          inventory={inventory}
+          preferences={preferences}
+          week={week}
+          feedback={feedback}
+          onApplyConstraints={async (constraints) => {
+            const cells = week.cells.map((cell) => {
+              const next = constraints.find((item) => item.day === cell.day && item.slot === cell.slot)
+              return next ? { ...cell, constraint: next.constraint } : cell
+            })
+            await saveWeek({ ...week, cells })
+          }}
+          onApplyAll={async (suggestions) => {
+            const byCell = new Map(suggestions.map((item) => [`${item.day}:${item.slot}`, item]))
+            const cells = week.cells.map((cell) => {
+              const hit = byCell.get(`${cell.day}:${cell.slot}`)
+              return hit ? { ...cell, meal: hit.meal } : cell
+            })
+            await saveWeek({ ...week, cells })
+            for (const suggestion of suggestions) {
+              await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
+            }
+            setFeedback(await store.listFeedback())
+          }}
+          onEditSuggestion={(suggestion) => {
+            setEditor({ day: suggestion.day, slot: suggestion.slot, meal: suggestion.meal })
+          }}
+        />
+      ) : null}
+
       {loading || !week ? (
         <EmptyState title="Loading week…" />
       ) : (
