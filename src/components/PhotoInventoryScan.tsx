@@ -161,10 +161,9 @@ export function PhotoInventoryScan({ onAddItems }: PhotoInventoryScanProps) {
 
       {!visionConfigured() ? (
         <p className="mt-3 text-sm text-warning">
-          Set <code className="rounded bg-canvas px-1">VITE_AI_BASE_URL</code>,{' '}
-          <code className="rounded bg-canvas px-1">VITE_AI_API_KEY</code>, and a vision-capable{' '}
-          <code className="rounded bg-canvas px-1">VITE_AI_VISION_MODEL</code> (for example <code>gpt-4o-mini</code>) in
-          your <code className="rounded bg-canvas px-1">.env</code> file, then restart the app.
+          For Groq, set <code className="rounded bg-canvas px-1">VITE_AI_BASE_URL=https://api.groq.com/openai/v1</code>,
+          your Groq key, <code className="rounded bg-canvas px-1">VITE_AI_MODEL=openai/gpt-oss-20b</code>, and{' '}
+          <code className="rounded bg-canvas px-1">VITE_AI_VISION_MODEL=qwen/qwen3.8-27b</code>, then restart the app.
         </p>
       ) : null}
 

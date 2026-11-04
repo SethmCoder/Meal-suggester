@@ -1,15 +1,14 @@
 import type { MealSlot, Preferences, RetrievedRecipe, Weekday } from '../data/types'
 import { WEEKDAYS, MEAL_SLOTS } from '../data/types'
+import { aiApiKey, aiBaseUrl, aiConfigured, chatModel, extractJsonObject } from './aiConfig'
+
+export { aiConfigured } from './aiConfig'
 
 export interface ModelPick {
   providerId: string
   day: Weekday
   slot: MealSlot
   why: string
-}
-
-export function aiConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_AI_BASE_URL && import.meta.env.VITE_AI_API_KEY)
 }
 
 export function sanitizeReply(reply: string, allowedUrls: string[]): string {
@@ -38,10 +37,10 @@ export async function rankWithModel(input: {
   preferences: Preferences
   inventoryNames: string[]
 }): Promise<{ reply: string; picks: ModelPick[] } | null> {
-  const base = import.meta.env.VITE_AI_BASE_URL?.replace(/\/$/, '')
-  const key = import.meta.env.VITE_AI_API_KEY
-  if (!base || !key) return null
-  const model = import.meta.env.VITE_AI_MODEL || 'gpt-4o-mini'
+  const base = aiBaseUrl()
+  const key = aiApiKey()
+  if (!base || !key || !aiConfigured()) return null
+  const model = chatModel()
   const catalog = input.recipes.map((recipe) => ({
     providerId: recipe.providerId,
     name: recipe.name,
@@ -95,14 +94,22 @@ export async function rankWithModel(input: {
   }
   if (!response.ok) return null
 
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] }
-  const content = payload.choices?.[0]?.message?.content
+  const payload = (await response.json()) as {
+    choices?: { message?: { content?: string | Array<{ type?: string; text?: string }> } }[]
+  }
+  const raw = payload.choices?.[0]?.message?.content
+  const content =
+    typeof raw === 'string'
+      ? raw
+      : Array.isArray(raw)
+        ? raw.map((part) => (typeof part?.text === 'string' ? part.text : '')).join('\n')
+        : ''
   if (!content) return null
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
+  const jsonMatch = extractJsonObject(content)
   if (!jsonMatch) return null
   let parsed: { reply?: unknown; picks?: unknown }
   try {
-    parsed = JSON.parse(jsonMatch[0]) as { reply?: unknown; picks?: unknown }
+    parsed = JSON.parse(jsonMatch) as { reply?: unknown; picks?: unknown }
   } catch {
     return null
   }
@@ -119,6 +126,9 @@ export async function rankWithModel(input: {
       picks.push({ providerId, day, slot, why: String(record.why ?? '').trim() })
     }
   }
-  const reply = sanitizeReply(typeof parsed.reply === 'string' ? parsed.reply : '', input.recipes.map((recipe) => recipe.sourceUrl ?? ''))
+  const reply = sanitizeReply(
+    typeof parsed.reply === 'string' ? parsed.reply : '',
+    input.recipes.map((recipe) => recipe.sourceUrl ?? ''),
+  )
   return { reply, picks }
 }
