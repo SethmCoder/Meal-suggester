@@ -94,9 +94,9 @@ export function PreferencesPage() {
         <div>
           <FieldLabel>Preferred recipe websites</FieldLabel>
           <p className="mb-2 text-xs text-muted">
-            While the app is running via <code className="rounded bg-canvas px-1">npm run dev</code>, Planora searches
-            these sites directly and reads public Recipe structured data (JSON-LD) when available. Some publishers
-            block bots or omit structured data; NYT Cooking is skipped. Spoonacular remains an optional backup.
+            Planora searches these sites via a local/Vercel API and reads public Recipe structured data (JSON-LD) when
+            available. Some publishers block bots or omit structured data; NYT Cooking is skipped. Spoonacular remains
+            an optional backup.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {RECIPE_PUBLISHERS.map((publisher) => {

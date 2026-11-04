@@ -1,16 +1,5 @@
 import type { Connect, Plugin } from 'vite'
-import { RECIPE_PUBLISHERS } from '../src/lib/recipeSources'
-import { searchPreferredPublishers, type PublisherScrapeTarget } from './recipeScrape'
-
-function scrapeTargets(ids: string[]): PublisherScrapeTarget[] {
-  const selected = new Set(ids)
-  return RECIPE_PUBLISHERS.filter((publisher) => selected.has(publisher.id)).map((publisher) => ({
-    id: publisher.id,
-    name: publisher.name,
-    domains: publisher.domains,
-    searchUrlTemplate: publisher.searchUrlTemplate,
-  }))
-}
+import { runRecipeSearch } from './recipeSearch'
 
 function sendJson(res: Connect.ServerResponse, status: number, body: unknown) {
   res.statusCode = status
@@ -25,31 +14,8 @@ function readUrl(req: Connect.IncomingMessage): URL {
 
 async function handleSearch(req: Connect.IncomingMessage, res: Connect.ServerResponse) {
   const url = readUrl(req)
-  const query = (url.searchParams.get('q') ?? '').trim()
-  const sites = (url.searchParams.get('sites') ?? '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean)
-
-  if (!query) {
-    sendJson(res, 400, { error: 'Missing q', recipes: [] })
-    return
-  }
-  if (!sites.length) {
-    sendJson(res, 200, { recipes: [] })
-    return
-  }
-
-  try {
-    const recipes = await searchPreferredPublishers(scrapeTargets(sites), query, {
-      perPublisher: 3,
-      maxPublishers: 3,
-    })
-    sendJson(res, 200, { recipes })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Scrape failed'
-    sendJson(res, 500, { error: message, recipes: [] })
-  }
+  const result = await runRecipeSearch(url.searchParams.get('q') ?? '', url.searchParams.get('sites') ?? '')
+  sendJson(res, result.status, result.body)
 }
 
 function attach(middlewares: Connect.Server) {
@@ -63,7 +29,7 @@ function attach(middlewares: Connect.Server) {
   })
 }
 
-/** Local Vite middleware: GET /api/recipes/search?q=chicken&sites=recipetineats,budgetbytes */
+/** Local Vite middleware mirrors Vercel `/api/recipes/search`. */
 export function recipeApiPlugin(): Plugin {
   return {
     name: 'planora-recipe-api',
