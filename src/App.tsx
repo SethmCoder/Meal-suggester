@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage'
 import { MealsPage } from './pages/MealsPage'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ShoppingListPage } from './pages/ShoppingListPage'
 import { SignupPage } from './pages/SignupPage'
 
 function BootGate({ children }: { children: ReactNode }) {
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/app" element={<AppShell />}>
             <Route index element={<MealsPage />} />
             <Route path="inventory" element={<InventoryPage />} />
+            <Route path="shopping" element={<ShoppingListPage />} />
             <Route path="preferences" element={<PreferencesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

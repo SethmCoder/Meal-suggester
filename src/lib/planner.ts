@@ -2,8 +2,13 @@ import type { InventoryItem, Meal, MealCell, MealFeedback, Preferences, Retrieve
 import { allergyConflict, containsTerm, dietConflict, dislikedConflict } from './diet'
 import { createId } from './id'
 import { ingredientKey, matchIngredient } from './ingredients'
+import { fitsMealSlot, slotScore } from './mealSlots'
 import { totalMinutes } from './meals'
 import { preferredPublishers } from './recipeSources'
+
+function recipeIngredientKeys(recipe: RetrievedRecipe): string[] {
+  return recipe.ingredients.map((item) => ingredientKey(item.name)).filter(Boolean)
+}
 
 export interface Suggestion {
   day: MealCell['day']
@@ -173,18 +178,37 @@ export function selectSuggestions(input: {
   scored.sort((a, b) => b.value - a.value || a.recipe.name.localeCompare(b.recipe.name))
 
   const used = new Set<string>()
+  const sharedIngredients = new Set<string>()
   const suggestions: Suggestion[] = []
   for (const cell of input.targets) {
     const cap = cell.constraint?.maxMinutes ?? null
     const theme = input.dayThemes?.[cell.day]
-    const timed = scored.filter((item) => fitsTime(item.recipe, cap))
+    const timed = scored
+      .filter((item) => fitsTime(item.recipe, cap) && fitsMealSlot(item.recipe, cell.slot))
+      .map((item) => {
+        const fit = slotScore(item.recipe, cell.slot)
+        const overlap = recipeIngredientKeys(item.recipe).filter((key) => sharedIngredients.has(key)).length
+        const reuseBonus = overlap > 0 ? overlap * 5 + 2 : 0
+        const reasons = fit.reason ? [...item.reasons, fit.reason] : [...item.reasons]
+        if (overlap > 0) {
+          reasons.push(`Reuses ${overlap} ingredient${overlap === 1 ? '' : 's'} from other planned meals`)
+        }
+        return {
+          ...item,
+          value: item.value + fit.delta + reuseBonus,
+          reasons,
+        }
+      })
+      .sort((a, b) => b.value - a.value || a.recipe.name.localeCompare(b.recipe.name))
     const unused = timed.filter((item) => !used.has(item.recipe.providerId))
     const pool = unused.length ? unused : input.allowReuse ? timed : []
     const themed = theme ? pool.filter((item) => matchesDayTheme(item.recipe, theme)) : []
+    // Prefer theme match among slot-appropriate recipes; never fall back to desserts.
     const best = themed[0] ?? pool[0]
     if (!best) continue
     const reused = used.has(best.recipe.providerId)
     used.add(best.recipe.providerId)
+    for (const key of recipeIngredientKeys(best.recipe)) sharedIngredients.add(key)
     const reasons = [...best.reasons]
     if (theme && themed[0]) reasons.unshift(`Matches ${cell.day} theme: ${theme}`)
     if (reused) reasons.push('Repeated because fewer unique recipes were available than meal slots')

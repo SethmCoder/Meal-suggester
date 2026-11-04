@@ -12,7 +12,7 @@ const STEPS = [
   },
   {
     title: 'Right sidebar',
-    body: 'Jump between Current Meals, Food Inventory, Food Preferences, Tutorial, Settings, and Log Out. Collapse the rail when you need more space.',
+    body: 'Jump between Current Meals, Food Inventory, Shopping List, Food Preferences, Tutorial, Settings, and Log Out. Collapse the rail when you need more space.',
     path: '/app',
     target: 'sidebar',
   },
@@ -42,8 +42,8 @@ const STEPS = [
   },
   {
     title: 'Shopping list',
-    body: 'Missing ingredients from planned meals appear here. Mark items purchased or add them straight to inventory.',
-    path: '/app',
+    body: 'Missing ingredients from planned meals appear here. Optimize meals to reuse ingredients, then mark items purchased or add them to inventory.',
+    path: '/app/shopping',
     target: 'shopping',
   },
 ] as const

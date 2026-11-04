@@ -135,6 +135,8 @@ export interface RetrievedRecipe {
   sourceUrl: string | null
   sourcePageFetched: boolean
   cuisineHint: string | null
+  /** MealDB/Spoonacular category when known, e.g. Breakfast, Dessert, Chicken */
+  categoryHint: string | null
 }
 
 export function emptyPreferences(): Preferences {

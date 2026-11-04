@@ -23,6 +23,7 @@ export interface ScrapedRecipe {
   sourceUrl: string
   sourcePageFetched: boolean
   cuisineHint: string | null
+  categoryHint: string | null
 }
 
 export interface PublisherScrapeTarget {
@@ -223,6 +224,7 @@ function recipeFromJsonLd(
     sourceUrl,
     sourcePageFetched: true,
     cuisineHint: firstString(node.recipeCuisine),
+    categoryHint: firstString(node.recipeCategory),
   }
 }
 

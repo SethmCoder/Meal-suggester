@@ -5,6 +5,7 @@ import {
   LogOut,
   Refrigerator,
   Settings,
+  ShoppingCart,
   SlidersHorizontal,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
@@ -46,6 +47,10 @@ export function Sidebar({ collapsed, onToggle, onLogout, onStartTutorial }: Side
         <NavLink to="/app/inventory" className={linkClass} title="Food Inventory">
           <Refrigerator className="h-5 w-5 shrink-0" />
           {!collapsed ? <span>Food Inventory</span> : null}
+        </NavLink>
+        <NavLink to="/app/shopping" className={linkClass} title="Shopping List">
+          <ShoppingCart className="h-5 w-5 shrink-0" />
+          {!collapsed ? <span>Shopping List</span> : null}
         </NavLink>
         <NavLink to="/app/preferences" className={linkClass} title="Food Preferences">
           <SlidersHorizontal className="h-5 w-5 shrink-0" />

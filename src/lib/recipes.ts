@@ -20,6 +20,7 @@ type MealDbMeal = {
   strInstructions?: string | null
   strSource?: string | null
   strArea?: string | null
+  strCategory?: string | null
 } & Record<string, string | null | undefined>
 
 function mapMealDb(meal: MealDbMeal): RetrievedRecipe {
@@ -52,6 +53,7 @@ function mapMealDb(meal: MealDbMeal): RetrievedRecipe {
     sourceUrl,
     sourcePageFetched: false,
     cuisineHint: meal.strArea?.trim() || null,
+    categoryHint: meal.strCategory?.trim() || null,
   }
 }
 
@@ -152,6 +154,7 @@ interface SpoonacularResult {
   readyInMinutes?: number
   instructions?: string | null
   cuisines?: string[]
+  dishTypes?: string[]
   extendedIngredients?: { name: string; amount?: number; unit?: string }[]
   analyzedInstructions?: { steps?: { step: string }[] }[]
 }
@@ -185,6 +188,7 @@ function mapSpoonacular(result: SpoonacularResult): RetrievedRecipe {
     sourceUrl,
     sourcePageFetched: false,
     cuisineHint: result.cuisines?.[0] ?? null,
+    categoryHint: result.dishTypes?.[0]?.trim() || null,
   }
   cache.set(recipe.providerId, recipe)
   return recipe
@@ -300,13 +304,17 @@ export async function retrieveRecipes(
     broadened = true
     const categories =
       minCount >= 20
-        ? ['Breakfast', 'Chicken', 'Seafood', 'Pasta', 'Vegetarian', 'Beef', 'Dessert', 'Side', 'Starter', 'Miscellaneous']
+        ? ['Breakfast', 'Chicken', 'Seafood', 'Pasta', 'Vegetarian', 'Beef', 'Side', 'Starter', 'Miscellaneous', 'Goat', 'Lamb', 'Pork', 'Vegan']
         : ['Vegetarian', 'Breakfast']
     for (const category of categories) {
       if (unique.size >= minCount) break
       await addMealDbIds(unique, await mealDbIdsByCategory(category, minCount >= 20 ? 8 : 4), hardCap)
     }
-    const fillerTerms = ['chicken', 'pasta', 'salad', 'egg', 'rice', 'fish', 'beef', 'soup', 'bean', 'potato']
+    // Pull extra breakfast options so morning slots are not filled with desserts.
+    if (minCount >= 20) {
+      await addMealDbIds(unique, await mealDbIdsByCategory('Breakfast', 12), hardCap)
+    }
+    const fillerTerms = ['chicken', 'pasta', 'salad', 'egg', 'rice', 'fish', 'beef', 'soup', 'bean', 'potato', 'omelette', 'pancake']
     for (const term of fillerTerms) {
       if (unique.size >= minCount) break
       const named = await searchMealDbByName(term, 8)

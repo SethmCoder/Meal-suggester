@@ -1,8 +1,10 @@
 import type { InventoryItem, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
+import { MEAL_SLOTS, WEEKDAYS } from '../data/types'
 import { aiConfigured, rankWithModel } from './ai'
 import { constraintUpdates, parsePlanRequest, targetCells } from './constraints'
 import { allergyConflict, dietConflict } from './diet'
 import { ingredientKey } from './ingredients'
+import { fitsMealSlot } from './mealSlots'
 import { totalMinutes } from './meals'
 import { fallbackSearchTerms, recipeToMeal, selectSuggestions, type Suggestion } from './planner'
 import { retrieveRecipes } from './recipes'
@@ -59,9 +61,12 @@ function resolveTargets(
   cells: MealCell[],
   options?: SuggestOptions,
 ): MealCell[] {
+  const wantWeek = Boolean(options?.wantWeek || request.wantWeek)
   const nextRequest = {
     ...request,
-    wantWeek: options?.wantWeek || request.wantWeek,
+    wantWeek,
+    // Whole-week plans always include Mon–Fri. Day names in the prompt are themes, not filters.
+    days: wantWeek ? [] : request.days,
     slots: options?.slots?.length ? options.slots : request.slots,
   }
   let targets = targetCells(nextRequest, cells)
@@ -191,6 +196,12 @@ export async function suggestMeals(input: {
     reply = 'No retrieved recipe fit your allergies, diet, and time limits. Try a different request or adjust a strict preference.'
   }
 
+  suggestions = [...suggestions].sort((a, b) => {
+    const dayDelta = WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day)
+    if (dayDelta !== 0) return dayDelta
+    return MEAL_SLOTS.indexOf(a.slot) - MEAL_SLOTS.indexOf(b.slot)
+  })
+
   return { reply, mode, suggestions, constraints }
 }
 
@@ -248,6 +259,7 @@ function picksToSuggestions(
     const names = recipe.ingredients.map((item) => item.name)
     if (allergyConflict(names, recipe.name, preferences.allergies)) continue
     if (dietConflict(names, recipe.name, preferences.dietary)) continue
+    if (!fitsMealSlot(recipe, pick.slot)) continue
     const cell = targets.find((item) => item.day === pick.day && item.slot === pick.slot)
     const cap = cell?.constraint?.maxMinutes ?? null
     const minutes = totalMinutes(recipe)

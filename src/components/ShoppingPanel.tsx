@@ -12,8 +12,8 @@ interface ShoppingPanelProps {
 export function ShoppingPanel({ rows, onTogglePurchased, onAddToInventory }: ShoppingPanelProps) {
   return (
     <div data-tutorial="shopping" className="soft-shadow rounded-2xl border border-line bg-surface p-4 md:p-5">
-      <h2 className="text-lg font-bold text-ink">Shopping list</h2>
-      <p className="mt-1 text-sm text-muted">Ingredients missing from this week’s planned meals.</p>
+      <h2 className="text-lg font-bold text-ink">What to buy</h2>
+      <p className="mt-1 text-sm text-muted">Ingredients still missing after subtracting your inventory.</p>
 
       <div className="mt-4 space-y-2">
         {!rows.length ? (

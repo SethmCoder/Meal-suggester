@@ -1,17 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AiChat } from '../components/AiChat'
 import { MealCellCard, MealDetails } from '../components/MealCellCard'
 import { MealEditorModal } from '../components/MealEditorModal'
 import { PlanWholeWeek } from '../components/PlanWholeWeek'
-import { ShoppingPanel } from '../components/ShoppingPanel'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { InventoryItem, Meal, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAYS } from '../data/types'
 import { addWeeks, formatDayHeading, formatWeekRange, mondayOf } from '../lib/dates'
-import { buildShoppingList } from '../lib/ingredients'
 import { moveMeal } from '../lib/meals'
 import type { Suggestion } from '../lib/planner'
 
@@ -22,7 +20,6 @@ export function MealsPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [preferences, setPreferences] = useState<Preferences | null>(null)
   const [feedback, setFeedback] = useState<MealFeedback[]>([])
-  const [purchased, setPurchased] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editor, setEditor] = useState<{ day: Weekday; slot: MealSlot; meal: Meal | null } | null>(null)
@@ -33,19 +30,17 @@ export function MealsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [nextWeek, nextInventory, nextPrefs, nextFeedback, nextPurchased, lastWeek] = await Promise.all([
+      const [nextWeek, nextInventory, nextPrefs, nextFeedback, lastWeek] = await Promise.all([
         store.getWeek(start),
         store.listInventory(),
         store.getPreferences(),
         store.listFeedback(),
-        store.listPurchased(start),
         store.getLastWeekStart(),
       ])
       setWeek(nextWeek)
       setInventory(nextInventory)
       setPreferences(nextPrefs)
       setFeedback(nextFeedback)
-      setPurchased(nextPurchased)
       if (profile?.openOnCurrentWeek === false && lastWeek && start === mondayOf(new Date()) && lastWeek !== start) {
         // Keep requested week; only seed last week tracking on first open via effect below.
       }
@@ -88,12 +83,6 @@ export function MealsPage() {
     const cells = week.cells.map((cell) => (cell.day === day && cell.slot === slot ? { ...cell, meal } : cell))
     await saveWeek({ ...week, cells })
   }
-
-  const shoppingRows = useMemo(() => {
-    if (!week) return []
-    const meals = week.cells.filter((cell) => cell.meal).map((cell) => cell.meal!) 
-    return buildShoppingList(meals, inventory, purchased)
-  }, [week, inventory, purchased])
 
   if (!store || !preferences) {
     return <div className="text-muted">{loading ? 'Loading meals…' : 'Session unavailable.'}</div>
@@ -218,34 +207,38 @@ export function MealsPage() {
         </div>
       )}
 
-      <div className="soft-shadow flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Food inventory</h2>
-          <p className="mt-1 text-sm text-muted">
-            {inventory.length
-              ? `${inventory.length} item${inventory.length === 1 ? '' : 's'} on hand. Scan fridge photos or edit stock on the inventory tab.`
-              : 'Inventory is empty. Scan your fridge and freezer to seed what you already own.'}
-          </p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="soft-shadow flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-ink">Food inventory</h2>
+            <p className="mt-1 text-sm text-muted">
+              {inventory.length
+                ? `${inventory.length} item${inventory.length === 1 ? '' : 's'} on hand.`
+                : 'Inventory is empty. Scan your fridge to get started.'}
+            </p>
+          </div>
+          <Link
+            to="/app/inventory"
+            className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover"
+          >
+            Open inventory
+          </Link>
         </div>
-        <Link
-          to="/app/inventory"
-          className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover"
-        >
-          Open Food Inventory
-        </Link>
+        <div className="soft-shadow flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-ink">Shopping list</h2>
+            <p className="mt-1 text-sm text-muted">
+              See missing ingredients and optimize meals so groceries get reused across the week.
+            </p>
+          </div>
+          <Link
+            to="/app/shopping"
+            className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover"
+          >
+            Open shopping list
+          </Link>
+        </div>
       </div>
-
-      <ShoppingPanel
-        rows={shoppingRows}
-        onTogglePurchased={async (key, purchasedFlag) => {
-          await store.setPurchased(weekStart, key, purchasedFlag)
-          setPurchased(await store.listPurchased(weekStart))
-        }}
-        onAddToInventory={async (item) => {
-          await store.upsertInventory(item)
-          setInventory(await store.listInventory())
-        }}
-      />
 
       {week && preferences ? (
         <AiChat

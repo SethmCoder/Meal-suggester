@@ -29,6 +29,7 @@ describe('parseRecipeHtml', () => {
     expect(recipe?.prepMinutes).toBe(10)
     expect(recipe?.cookMinutes).toBe(20)
     expect(recipe?.cuisineHint).toBe('Italian')
+    expect(recipe?.categoryHint).toBeNull()
     expect(recipe?.sourcePageFetched).toBe(true)
   })
 })
