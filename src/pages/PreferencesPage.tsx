@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { CheckboxOptionGroup } from '../components/CheckboxOptionGroup'
 import { Button, ErrorText, FieldLabel, TextArea, TextSelect } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { Preferences, SkillLevel } from '../data/types'
 import { emptyPreferences, normalizePreferences } from '../data/types'
+import { COMMON_ALLERGIES, COMMON_CUISINES, COMMON_DIETARY } from '../lib/preferenceOptions'
 import { RECIPE_PUBLISHERS } from '../lib/recipeSources'
 
 function listToText(values: string[]) {
@@ -64,17 +66,21 @@ export function PreferencesPage() {
       </p>
 
       <form className="soft-shadow mt-6 space-y-4 rounded-2xl border border-line bg-surface p-5" onSubmit={onSubmit}>
-        <TagField
+        <CheckboxOptionGroup
           label="Food allergies"
-          value={listToText(draft.allergies)}
-          onChange={(value) => setDraft((d) => ({ ...d, allergies: textToList(value) }))}
-          hint="Comma-separated. Strictly excluded from suggestions."
+          options={COMMON_ALLERGIES}
+          values={draft.allergies}
+          onChange={(allergies) => setDraft((d) => ({ ...d, allergies }))}
+          hint="Strictly excluded from suggestions."
+          otherPlaceholder="Other allergies (comma-separated)"
         />
-        <TagField
+        <CheckboxOptionGroup
           label="Dietary restrictions"
-          value={listToText(draft.dietary)}
-          onChange={(value) => setDraft((d) => ({ ...d, dietary: textToList(value) }))}
-          hint="Example: vegetarian, halal, gluten-free"
+          options={COMMON_DIETARY}
+          values={draft.dietary}
+          onChange={(dietary) => setDraft((d) => ({ ...d, dietary }))}
+          hint="Treated as hard rules for meal matching."
+          otherPlaceholder="Other dietary rules (comma-separated)"
         />
         <TagField
           label="Favorite foods"
@@ -86,10 +92,12 @@ export function PreferencesPage() {
           value={listToText(draft.disliked)}
           onChange={(value) => setDraft((d) => ({ ...d, disliked: textToList(value) }))}
         />
-        <TagField
+        <CheckboxOptionGroup
           label="Preferred cuisines"
-          value={listToText(draft.cuisines)}
-          onChange={(value) => setDraft((d) => ({ ...d, cuisines: textToList(value) }))}
+          options={COMMON_CUISINES}
+          values={draft.cuisines}
+          onChange={(cuisines) => setDraft((d) => ({ ...d, cuisines }))}
+          otherPlaceholder="Other cuisines (comma-separated)"
         />
         <div>
           <FieldLabel>Preferred recipe websites</FieldLabel>
