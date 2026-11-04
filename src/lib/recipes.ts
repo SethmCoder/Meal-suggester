@@ -160,6 +160,25 @@ async function searchSpoonacular(term: string, apiKey: string, number = 5): Prom
   return (payload.results ?? []).map(mapSpoonacular)
 }
 
+/** Local Vite middleware scrapes preferred publisher search pages + Recipe JSON-LD. */
+async function searchPreferredSites(term: string, siteIds: string[]): Promise<RetrievedRecipe[]> {
+  const scrapable = preferredPublishers(siteIds).filter((publisher) => publisher.searchUrlTemplate)
+  if (!scrapable.length) return []
+  try {
+    const url = new URL('/api/recipes/search', window.location.origin)
+    url.searchParams.set('q', term)
+    url.searchParams.set('sites', scrapable.map((publisher) => publisher.id).join(','))
+    const response = await fetch(url.toString())
+    if (!response.ok) return []
+    const payload = (await response.json()) as { recipes?: RetrievedRecipe[] }
+    const recipes = payload.recipes ?? []
+    for (const recipe of recipes) cache.set(recipe.providerId, recipe)
+    return recipes
+  } catch {
+    return []
+  }
+}
+
 function matchesPublisher(recipe: RetrievedRecipe, publishers: RecipePublisher[]): boolean {
   if (!publishers.length || !recipe.sourceUrl) return false
   const host = (() => {
@@ -191,9 +210,16 @@ export async function retrieveRecipes(
   const spoonKey = import.meta.env.VITE_SPOONACULAR_API_KEY
   const publishers = preferredPublishers(preferredSiteIds)
 
-  for (const term of terms.slice(0, 4)) {
+  for (const [index, term] of terms.slice(0, 4).entries()) {
     const trimmed = term.trim()
     if (!trimmed) continue
+
+    // Preferred sites first via local scrape API (no Spoonacular required).
+    if (publishers.length && index < 2) {
+      const scraped = await searchPreferredSites(trimmed, preferredSiteIds)
+      for (const recipe of scraped) unique.set(recipe.providerId, recipe)
+    }
+
     const named = await searchMealDbByName(trimmed)
     for (const recipe of named) unique.set(recipe.providerId, recipe)
     const ids = await mealDbIdsByIngredient(trimmed)
@@ -206,7 +232,7 @@ export async function retrieveRecipes(
       const extra = await searchSpoonacular(trimmed, spoonKey, 6)
       for (const recipe of extra) unique.set(recipe.providerId, recipe)
 
-      // Bias searches toward preferred publishers when Spoonacular indexes them.
+      // Optional Spoonacular bias when preferred publishers are selected.
       for (const publisher of publishers.slice(0, 3)) {
         if (unique.size >= 20) break
         const biased = await searchSpoonacular(`${trimmed} ${publisher.searchHint}`, spoonKey, 4)

@@ -111,7 +111,7 @@ function matchReply(
   ]
   if (preferredHits > 0) {
     parts.push(
-      `${preferredHits} retrieved result${preferredHits === 1 ? '' : 's'} linked to your preferred sites when the aggregator provided a real source URL.`,
+      `${preferredHits} retrieved result${preferredHits === 1 ? '' : 's'} came from your preferred recipe sites.`,
     )
   }
   if (broadened) parts.push('The first search was thin, so these include broader recipes from TheMealDB.')
