@@ -145,7 +145,7 @@ export function AiChat({
               rows={2}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder='Try “Monday dinner must take less than 30 minutes”'
+              placeholder='Try “Make breakfast egg-based, like scrambled or fried”'
             />
             <Button type="submit" className="mt-2 w-full" disabled={busy}>
               {busy ? 'Planning…' : 'Send'}

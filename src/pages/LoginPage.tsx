@@ -12,7 +12,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (profile) return <Navigate to="/app" replace />
+  if (profile) {
+    return <Navigate to={profile.surveyCompleted ? '/app' : '/onboarding'} replace />
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -20,6 +22,7 @@ export function LoginPage() {
     setError(null)
     try {
       await login(identifier, password)
+      // AppShell redirects to /onboarding when the survey is still incomplete.
       navigate('/app')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed.')

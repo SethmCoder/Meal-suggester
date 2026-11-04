@@ -3,6 +3,7 @@ import {
   ChefHat,
   ChevronsLeft,
   LogOut,
+  Receipt,
   Refrigerator,
   Settings,
   ShoppingCart,
@@ -48,9 +49,21 @@ export function Sidebar({ collapsed, onToggle, onLogout, onStartTutorial }: Side
           <Refrigerator className="h-5 w-5 shrink-0" />
           {!collapsed ? <span>Food Inventory</span> : null}
         </NavLink>
-        <NavLink to="/app/shopping" className={linkClass} title="Shopping List">
+        <NavLink
+          to="/app/shopping"
+          className={({ isActive }) => cn(linkClass({ isActive }), !collapsed && 'ml-3')}
+          title="Shopping List"
+        >
           <ShoppingCart className="h-5 w-5 shrink-0" />
           {!collapsed ? <span>Shopping List</span> : null}
+        </NavLink>
+        <NavLink
+          to="/app/expenses"
+          className={({ isActive }) => cn(linkClass({ isActive }), !collapsed && 'ml-3')}
+          title="Expenses"
+        >
+          <Receipt className="h-5 w-5 shrink-0" />
+          {!collapsed ? <span>Expenses</span> : null}
         </NavLink>
         <NavLink to="/app/preferences" className={linkClass} title="Food Preferences">
           <SlidersHorizontal className="h-5 w-5 shrink-0" />

@@ -2,7 +2,16 @@ import { addDays, todayISO } from '../lib/dates'
 import { createId } from '../lib/id'
 import { normalizeWeek } from '../lib/meals'
 import type { DataStore } from './store'
-import type { InventoryItem, MealCell, MealFeedback, Preferences, Profile, ProfileUpdate } from './types'
+import type {
+  Consumption,
+  InventoryItem,
+  MealCell,
+  MealFeedback,
+  Preferences,
+  Profile,
+  ProfileUpdate,
+  Purchase,
+} from './types'
 import { DEMO_PASSWORD, emptyPreferences, normalizePreferences } from './types'
 import { validateEmail, validateUsername } from '../lib/validation'
 
@@ -11,6 +20,8 @@ interface MemoryBlob {
   weeks: Record<string, MealCell[]>
   preferences: Preferences
   purchased: Record<string, string[]>
+  purchases: Purchase[]
+  consumptions: Consumption[]
   feedback: MealFeedback[]
   lastWeekStart: string | null
 }
@@ -34,6 +45,7 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
     email: 'demo@planora.app',
     avatarUrl: null,
     tutorialCompleted: false,
+    surveyCompleted: true,
     autoStartTutorial: true,
     openOnCurrentWeek: true,
   }
@@ -42,6 +54,8 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
     weeks: {},
     preferences: emptyPreferences(),
     purchased: {},
+    purchases: [],
+    consumptions: [],
     feedback: [],
     lastWeekStart: null,
   }
@@ -69,6 +83,7 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
       }
       if (input.avatarUrl !== undefined) profile.avatarUrl = input.avatarUrl
       if (input.tutorialCompleted != null) profile.tutorialCompleted = input.tutorialCompleted
+      if (input.surveyCompleted != null) profile.surveyCompleted = input.surveyCompleted
       if (input.autoStartTutorial != null) profile.autoStartTutorial = input.autoStartTutorial
       if (input.openOnCurrentWeek != null) profile.openOnCurrentWeek = input.openOnCurrentWeek
       return { ...profile }
@@ -83,6 +98,9 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
     },
     async deleteInventory(id) {
       blob.inventory = blob.inventory.filter((item) => item.id !== id)
+    },
+    async replaceInventory(items) {
+      blob.inventory = items.map((item) => ({ ...item }))
     },
     async getWeek(weekStart) {
       return normalizeWeek(weekStart, blob.weeks[weekStart])
@@ -104,6 +122,39 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
       if (purchased) current.add(ingredientKey)
       else current.delete(ingredientKey)
       blob.purchased[weekStart] = [...current]
+    },
+    async listPurchases() {
+      return [...blob.purchases].sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt))
+    },
+    async addPurchase(purchase) {
+      const row: Purchase = {
+        id: purchase.id ?? createId(),
+        name: purchase.name,
+        quantity: purchase.quantity,
+        unit: purchase.unit,
+        estimatedCostUsd: purchase.estimatedCostUsd,
+        purchasedAt: purchase.purchasedAt ?? new Date().toISOString(),
+        source: purchase.source,
+        ingredientKey: purchase.ingredientKey,
+      }
+      blob.purchases.push(row)
+      return row
+    },
+    async listConsumptions() {
+      return [...blob.consumptions].sort((a, b) => b.finishedAt.localeCompare(a.finishedAt))
+    },
+    async addConsumption(entry) {
+      const row: Consumption = {
+        id: entry.id ?? createId(),
+        mealName: entry.mealName,
+        day: entry.day,
+        slot: entry.slot,
+        weekStart: entry.weekStart,
+        finishedAt: entry.finishedAt ?? new Date().toISOString(),
+        items: entry.items,
+      }
+      blob.consumptions.push(row)
+      return row
     },
     async listFeedback() {
       return [...blob.feedback]

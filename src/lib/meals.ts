@@ -8,6 +8,7 @@ export function emptyWeek(_weekStart: string): MealCell[] {
       slot,
       meal: null,
       constraint: null,
+      finished: false,
     })),
   )
 }
@@ -24,6 +25,7 @@ export function normalizeWeek(weekStart: string, cells: MealCell[] | null | unde
         ...cell,
         meal: found.meal ?? null,
         constraint: found.constraint ?? null,
+        finished: Boolean(found.finished),
       }
     }),
   }
@@ -39,8 +41,12 @@ export function moveMeal(
   const target = cells.find((cell) => cell.day === to.day && cell.slot === to.slot)
   if (!source?.meal) return cells
   return cells.map((cell) => {
-    if (cell.day === from.day && cell.slot === from.slot) return { ...cell, meal: target?.meal ?? null }
-    if (cell.day === to.day && cell.slot === to.slot) return { ...cell, meal: source.meal }
+    if (cell.day === from.day && cell.slot === from.slot) {
+      return { ...cell, meal: target?.meal ?? null, finished: target?.meal ? Boolean(target.finished) : false }
+    }
+    if (cell.day === to.day && cell.slot === to.slot) {
+      return { ...cell, meal: source.meal, finished: Boolean(source.finished) }
+    }
     return cell
   })
 }

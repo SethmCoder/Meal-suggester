@@ -1,35 +1,46 @@
-import { ArrowRightLeft, ExternalLink, Pencil, Trash2, UtensilsCrossed } from 'lucide-react'
+import { ArrowRightLeft, Check, ExternalLink, Pencil, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { InventoryItem, Meal, MealCell, MealSlot, Weekday } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { summarizeStock } from '../lib/ingredients'
 import { totalMinutes } from '../lib/meals'
+import { cn } from '../lib/cn'
 import { Badge, Button } from './ui'
 
 interface MealCellCardProps {
   cell: MealCell
   inventory: InventoryItem[]
+  finishing?: boolean
   onAssign: () => void
   onEdit: () => void
   onRemove: () => void
   onDetails: () => void
   onMove: (to: { day: Weekday; slot: MealSlot }) => void
+  onFinish: () => void
 }
 
 export function MealCellCard({
   cell,
   inventory,
+  finishing = false,
   onAssign,
   onEdit,
   onRemove,
   onDetails,
   onMove,
+  onFinish,
 }: MealCellCardProps) {
   const meal = cell.meal
   const stock = meal ? summarizeStock(meal.ingredients, inventory) : null
   const minutes = meal ? totalMinutes(meal) : null
+  const finished = Boolean(cell.finished)
 
   return (
-    <div className="soft-shadow flex min-h-[140px] flex-col rounded-2xl border border-line bg-surface p-3">
+    <div
+      className={cn(
+        'soft-shadow flex min-h-[140px] flex-col rounded-2xl border bg-surface p-3',
+        finished ? 'border-success/40 bg-success/5' : 'border-line',
+      )}
+    >
       {!meal ? (
         <button
           type="button"
@@ -54,6 +65,7 @@ export function MealCellCard({
             </span>
           </button>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {finished ? <Badge tone="success">Finished</Badge> : null}
             {minutes != null ? <Badge tone="neutral">{minutes} min{meal.timeIsEstimated ? ' est.' : ''}</Badge> : null}
             {stock ? (
               <Badge tone={stock.missingCount ? 'accent' : stock.checkCount ? 'warning' : 'success'}>{stock.label}</Badge>
@@ -74,7 +86,20 @@ export function MealCellCard({
               {meal.sourceName ? `Recipe · ${meal.sourceName}` : 'Open recipe'}
             </a>
           ) : null}
-          <div className="mt-auto flex items-center gap-1 pt-3">
+          <div className="mt-auto flex flex-wrap items-center gap-1 pt-3">
+            {!finished ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="px-2 py-1.5 text-success"
+                onClick={onFinish}
+                disabled={finishing}
+                title="Mark finished — deducts ingredients from inventory"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span className="text-xs">{finishing ? '…' : 'Finished'}</span>
+              </Button>
+            ) : null}
             <Button type="button" variant="ghost" className="px-2 py-1.5" onClick={onEdit} title="Edit">
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -175,7 +200,7 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
           {meal.ingredients.map((item, index) => (
             <li key={`${item.name}-${index}`}>
               {item.quantity != null ? `${item.quantity} ` : ''}
-              {item.unit ? `${item.unit} ` : ''}
+              {item.unit && item.quantity != null ? `${item.unit} ` : ''}
               {item.name}
             </li>
           ))}

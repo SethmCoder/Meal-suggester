@@ -15,6 +15,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (!profile || autoStarted.current) return
+    if (!profile.surveyCompleted) return
     if (profile.autoStartTutorial && !profile.tutorialCompleted) {
       autoStarted.current = true
       setTutorialOpen(true)
@@ -30,6 +31,7 @@ export function AppShell() {
   }
 
   if (!profile) return <Navigate to="/" replace />
+  if (!profile.surveyCompleted) return <Navigate to="/onboarding" replace />
 
   return (
     <div className="min-h-screen bg-canvas">

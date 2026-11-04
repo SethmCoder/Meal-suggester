@@ -37,6 +37,7 @@ export async function rankWithModel(input: {
   preferences: Preferences
   inventoryNames: string[]
   dayThemes?: Partial<Record<Weekday, string>>
+  foodFocus?: string[]
 }): Promise<{ reply: string; picks: ModelPick[] } | null> {
   const base = aiBaseUrl()
   const key = aiApiKey()
@@ -53,6 +54,55 @@ export async function rankWithModel(input: {
     sourceName: recipe.sourceName,
   }))
 
+  const targetCount = input.targets.length
+  const system = [
+    'You plan meals for Planora.',
+    'Choose only from the retrieved recipe catalog. Never invent recipes, URLs, or cook times.',
+    'Allergies and dietary restrictions are strict hard filters.',
+    'Return exactly one pick for every listed target cell — no more, no fewer when the catalog allows.',
+    'Only use day/slot pairs present in targets. Do not invent extra days.',
+    'Never assign dessert/sweets to breakfast, lunch, or dinner.',
+    'If foodFocus is provided (for example egg, scrambled), prefer catalog recipes that match those words in the name or ingredients.',
+    'For breakfast targets, prefer egg dishes, oatmeal, pancakes, toast, and similar breakfast foods when requested or appropriate.',
+    'When dayThemes are provided, match them as well as the catalog allows.',
+    'Prefer distinct recipes; reuse only if the catalog is smaller than the number of targets.',
+    'Reuse shared ingredients across meals when useful for shopping.',
+    'Optimize for store package sizes: if one meal uses 1 egg, prefer later meals that use more eggs so a dozen is mostly consumed instead of wasted.',
+    'Same idea for milk, chicken packs, rice bags, onions, etc. Fill opened packages across the week.',
+    'Return JSON only: {"reply": string, "picks": [{"providerId": string, "day": string, "slot": string, "why": string}]}.',
+  ].join(' ')
+
+  const body: Record<string, unknown> = {
+    model,
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: system },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          request: input.message,
+          foodFocus: input.foodFocus ?? [],
+          targets: input.targets,
+          targetCount,
+          dayThemes: input.dayThemes ?? {},
+          allergies: input.preferences.allergies,
+          dietary: input.preferences.dietary,
+          favorites: input.preferences.favorites,
+          disliked: input.preferences.disliked,
+          cuisines: input.preferences.cuisines,
+          skill: input.preferences.skill,
+          equipment: input.preferences.equipment,
+          instructions: input.preferences.instructions,
+          preferredRecipeSites: input.preferences.recipeSites,
+          inventory: input.inventoryNames,
+          catalog,
+        }),
+      },
+    ],
+  }
+  // Helps many OpenAI-compatible providers return valid JSON.
+  body.response_format = { type: 'json_object' }
+
   let response: Response
   try {
     response = await fetch(`${base}/chat/completions`, {
@@ -61,39 +111,27 @@ export async function rankWithModel(input: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You plan meals for Planora. Choose only from the retrieved recipe catalog. Never invent recipes, URLs, or cook times. Allergies and dietary restrictions are strict. When dayThemes are provided, match each day\'s cuisine/theme as closely as the catalog allows. You MUST return exactly one pick for EVERY target cell Monday through Friday — never skip Friday or any other weekday. Never assign dessert, cake, cookies, pudding, or other sweets to breakfast, lunch, or dinner; those slots need real meals. Prefer breakfast-like dishes (eggs, oatmeal, pancakes, toast, etc.) for breakfast. Prefer distinct recipes; reuse a catalog recipe only if there are fewer recipes than targets. Whenever possible, reuse the same ingredients across multiple meals so the shopping list stays short (for example chicken in two dinners, rice with both a bowl and a side). Return JSON only: {"reply": string, "picks": [{"providerId": string, "day": string, "slot": string, "why": string}]}. Days must be monday through friday. Slots must be breakfast, lunch, or dinner. Use only the requested target cells.',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              request: input.message,
-              targets: input.targets,
-              dayThemes: input.dayThemes ?? {},
-              allergies: input.preferences.allergies,
-              dietary: input.preferences.dietary,
-              favorites: input.preferences.favorites,
-              disliked: input.preferences.disliked,
-              cuisines: input.preferences.cuisines,
-              skill: input.preferences.skill,
-              equipment: input.preferences.equipment,
-              instructions: input.preferences.instructions,
-              preferredRecipeSites: input.preferences.recipeSites,
-              inventory: input.inventoryNames,
-              catalog,
-            }),
-          },
-        ],
-      }),
+      body: JSON.stringify(body),
     })
   } catch {
     return null
+  }
+
+  // Some models reject response_format — retry once without it.
+  if (!response.ok && response.status === 400) {
+    delete body.response_format
+    try {
+      response = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+    } catch {
+      return null
+    }
   }
   if (!response.ok) return null
 
@@ -117,15 +155,17 @@ export async function rankWithModel(input: {
     return null
   }
   const allowedIds = new Set(input.recipes.map((recipe) => recipe.providerId))
+  const allowedTargets = new Set(input.targets.map((cell) => `${cell.day}:${cell.slot}`))
   const picks: ModelPick[] = []
   if (Array.isArray(parsed.picks)) {
     for (const pick of parsed.picks) {
       if (!pick || typeof pick !== 'object') continue
       const record = pick as Record<string, unknown>
       const providerId = String(record.providerId ?? '')
-      const day = String(record.day ?? '')
-      const slot = String(record.slot ?? '')
+      const day = String(record.day ?? '').toLowerCase()
+      const slot = String(record.slot ?? '').toLowerCase()
       if (!allowedIds.has(providerId) || !isWeekday(day) || !isSlot(slot)) continue
+      if (!allowedTargets.has(`${day}:${slot}`)) continue
       picks.push({ providerId, day, slot, why: String(record.why ?? '').trim() })
     }
   }

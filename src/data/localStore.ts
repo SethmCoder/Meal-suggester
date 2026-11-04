@@ -1,11 +1,13 @@
 import type { DataStore } from './store'
 import type {
+  Consumption,
   InventoryItem,
   MealCell,
   MealFeedback,
   Preferences,
   Profile,
   ProfileUpdate,
+  Purchase,
 } from './types'
 import { emptyPreferences, normalizePreferences } from './types'
 import { createId } from '../lib/id'
@@ -23,6 +25,8 @@ interface LocalAccount {
   passwordSalt: string
   avatarUrl: string | null
   tutorialCompleted: boolean
+  /** Missing on older local accounts — treat as completed. */
+  surveyCompleted?: boolean
   autoStartTutorial: boolean
   openOnCurrentWeek: boolean
 }
@@ -32,6 +36,8 @@ interface UserBlob {
   weeks: Record<string, MealCell[]>
   preferences: Preferences
   purchased: Record<string, string[]>
+  purchases: Purchase[]
+  consumptions: Consumption[]
   feedback: MealFeedback[]
   lastWeekStart: string | null
 }
@@ -47,8 +53,19 @@ function emptyBlob(): UserBlob {
     weeks: {},
     preferences: emptyPreferences(),
     purchased: {},
+    purchases: [],
+    consumptions: [],
     feedback: [],
     lastWeekStart: null,
+  }
+}
+
+function ensureBlob(blob: UserBlob): UserBlob {
+  return {
+    ...emptyBlob(),
+    ...blob,
+    purchases: Array.isArray(blob.purchases) ? blob.purchases : [],
+    consumptions: Array.isArray(blob.consumptions) ? blob.consumptions : [],
   }
 }
 
@@ -77,6 +94,8 @@ function toProfile(account: LocalAccount): Profile {
     email: account.email,
     avatarUrl: account.avatarUrl,
     tutorialCompleted: account.tutorialCompleted,
+    // Grandfather older local accounts that predate the survey flag.
+    surveyCompleted: account.surveyCompleted ?? true,
     autoStartTutorial: account.autoStartTutorial,
     openOnCurrentWeek: account.openOnCurrentWeek,
   }
@@ -87,7 +106,7 @@ function createLocalStore(userId: string): DataStore {
     const db = readDB()
     const account = db.accounts.find((item) => item.id === userId)
     if (!account) throw new Error('This account is no longer on this device.')
-    const blob = db.users[userId] ?? emptyBlob()
+    const blob = ensureBlob(db.users[userId] ?? emptyBlob())
     return { db, account, blob }
   }
 
@@ -133,6 +152,7 @@ function createLocalStore(userId: string): DataStore {
       }
       if (input.avatarUrl !== undefined) account.avatarUrl = input.avatarUrl
       if (input.tutorialCompleted != null) account.tutorialCompleted = input.tutorialCompleted
+      if (input.surveyCompleted != null) account.surveyCompleted = input.surveyCompleted
       if (input.autoStartTutorial != null) account.autoStartTutorial = input.autoStartTutorial
       if (input.openOnCurrentWeek != null) account.openOnCurrentWeek = input.openOnCurrentWeek
       save(db, blob)
@@ -151,6 +171,11 @@ function createLocalStore(userId: string): DataStore {
     async deleteInventory(id) {
       const { db, blob } = load()
       blob.inventory = blob.inventory.filter((item) => item.id !== id)
+      save(db, blob)
+    },
+    async replaceInventory(items) {
+      const { db, blob } = load()
+      blob.inventory = items.map((item) => ({ ...item }))
       save(db, blob)
     },
     async getWeek(weekStart) {
@@ -179,6 +204,43 @@ function createLocalStore(userId: string): DataStore {
       else current.delete(ingredientKey)
       blob.purchased[weekStart] = [...current]
       save(db, blob)
+    },
+    async listPurchases() {
+      return [...load().blob.purchases].sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt))
+    },
+    async addPurchase(purchase) {
+      const { db, blob } = load()
+      const row: Purchase = {
+        id: purchase.id ?? createId(),
+        name: purchase.name,
+        quantity: purchase.quantity,
+        unit: purchase.unit,
+        estimatedCostUsd: purchase.estimatedCostUsd,
+        purchasedAt: purchase.purchasedAt ?? new Date().toISOString(),
+        source: purchase.source,
+        ingredientKey: purchase.ingredientKey,
+      }
+      blob.purchases.push(row)
+      save(db, blob)
+      return row
+    },
+    async listConsumptions() {
+      return [...load().blob.consumptions].sort((a, b) => b.finishedAt.localeCompare(a.finishedAt))
+    },
+    async addConsumption(entry) {
+      const { db, blob } = load()
+      const row: Consumption = {
+        id: entry.id ?? createId(),
+        mealName: entry.mealName,
+        day: entry.day,
+        slot: entry.slot,
+        weekStart: entry.weekStart,
+        finishedAt: entry.finishedAt ?? new Date().toISOString(),
+        items: entry.items,
+      }
+      blob.consumptions.push(row)
+      save(db, blob)
+      return row
     },
     async listFeedback() {
       return load().blob.feedback
@@ -234,6 +296,7 @@ export async function registerLocal(input: {
     passwordSalt: salt,
     avatarUrl: null,
     tutorialCompleted: false,
+    surveyCompleted: false,
     autoStartTutorial: true,
     openOnCurrentWeek: true,
   }

@@ -3,6 +3,7 @@ import { allergyConflict, containsTerm, dietConflict, dislikedConflict } from '.
 import { createId } from './id'
 import { ingredientKey, matchIngredient } from './ingredients'
 import { fitsMealSlot, slotScore } from './mealSlots'
+import { openPackageGaps, packageFillBonus } from './packages'
 import { totalMinutes } from './meals'
 import { preferredPublishers } from './recipeSources'
 
@@ -153,7 +154,9 @@ export function selectSuggestions(input: {
   dayThemes?: Partial<Record<MealCell['day'], string>>
   /** When true, reuse recipes after the unique pool is exhausted so every target can be filled. */
   allowReuse?: boolean
-}): { suggestions: Suggestion[]; relaxedDislikes: boolean } {
+  /** User-requested foods/cuisines, e.g. egg, scrambled. */
+  foodFocus?: string[]
+}): { suggestions: Suggestion[]; relaxedDislikes: boolean; relaxedInventory: boolean } {
   const rejected = new Set(
     input.feedback.filter((item) => !item.accepted).map((item) => ingredientKey(item.mealName)),
   )
@@ -171,9 +174,29 @@ export function selectSuggestions(input: {
   const relaxedDislikes = pool.length === 0 && eligible.length > 0
   if (relaxedDislikes) pool = eligible
 
-  let scored = pool.map((recipe) => scoreRecipe(recipe, input.inventory, input.preferences, input.feedback))
+  let scored = pool.map((recipe) => {
+    const base = scoreRecipe(recipe, input.inventory, input.preferences, input.feedback)
+    const focus = input.foodFocus ?? []
+    if (!focus.length) return base
+    const hay = `${recipe.name} ${recipe.cuisineHint ?? ''} ${recipe.categoryHint ?? ''} ${recipeIngredientKeys(recipe).join(' ')}`.toLowerCase()
+    const hits = focus.filter((term) => hay.includes(term.toLowerCase()))
+    if (!hits.length) return base
+    return {
+      ...base,
+      value: base.value + hits.length * 8 + 6,
+      reasons: [`Matches your request: ${hits.join(', ')}`, ...base.reasons],
+    }
+  })
+
+  let relaxedInventory = false
   if (input.preferInventory && scored.some((item) => item.using > 0)) {
-    scored = scored.filter((item) => item.using > 0)
+    const inventoryOnly = scored.filter((item) => item.using > 0)
+    // Keep inventory bias only when it still leaves enough options for the targets.
+    if (inventoryOnly.length >= Math.min(3, Math.max(1, input.targets.length))) {
+      scored = inventoryOnly
+    } else {
+      relaxedInventory = true
+    }
   }
   scored.sort((a, b) => b.value - a.value || a.recipe.name.localeCompare(b.recipe.name))
 
@@ -183,19 +206,25 @@ export function selectSuggestions(input: {
   for (const cell of input.targets) {
     const cap = cell.constraint?.maxMinutes ?? null
     const theme = input.dayThemes?.[cell.day]
+    const openPacks = openPackageGaps(
+      suggestions.map((item) => item.meal),
+      input.inventory,
+    )
     const timed = scored
       .filter((item) => fitsTime(item.recipe, cap) && fitsMealSlot(item.recipe, cell.slot))
       .map((item) => {
         const fit = slotScore(item.recipe, cell.slot)
         const overlap = recipeIngredientKeys(item.recipe).filter((key) => sharedIngredients.has(key)).length
         const reuseBonus = overlap > 0 ? overlap * 5 + 2 : 0
+        const packBonus = packageFillBonus(item.recipe, openPacks)
         const reasons = fit.reason ? [...item.reasons, fit.reason] : [...item.reasons]
         if (overlap > 0) {
           reasons.push(`Reuses ${overlap} ingredient${overlap === 1 ? '' : 's'} from other planned meals`)
         }
+        if (packBonus.reason) reasons.push(packBonus.reason)
         return {
           ...item,
-          value: item.value + fit.delta + reuseBonus,
+          value: item.value + fit.delta + reuseBonus + packBonus.delta,
           reasons,
         }
       })
@@ -221,11 +250,19 @@ export function selectSuggestions(input: {
     })
   }
 
-  return { suggestions, relaxedDislikes }
+  return { suggestions, relaxedDislikes, relaxedInventory }
 }
 
 export function fallbackSearchTerms(preferences: Preferences): string[] {
   const diet = preferences.dietary.join(' ').toLowerCase()
-  if (diet.includes('vegan') || diet.includes('vegetarian')) return ['vegetable', 'bean', 'rice']
+  if (diet.includes('vegan')) return ['tofu', 'lentil', 'chickpea', 'vegetable']
+  if (diet.includes('vegetarian')) return ['vegetable', 'bean', 'egg', 'cheese']
+  if (diet.includes('gluten')) return ['rice', 'potato', 'salad', 'chicken']
   return ['chicken', 'vegetable', 'egg']
+}
+
+export function matchesFoodFocus(recipe: RetrievedRecipe, foodFocus: string[] | undefined): boolean {
+  if (!foodFocus?.length) return true
+  const hay = `${recipe.name} ${recipe.cuisineHint ?? ''} ${recipe.categoryHint ?? ''} ${recipeIngredientKeys(recipe).join(' ')}`.toLowerCase()
+  return foodFocus.some((term) => hay.includes(term.toLowerCase()))
 }

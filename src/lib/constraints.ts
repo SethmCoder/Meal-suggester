@@ -21,6 +21,141 @@ const DAY_MAP: Record<string, Weekday> = {
   fri: 'friday',
 }
 
+const STOPWORDS = new Set([
+  'under',
+  'less',
+  'than',
+  'at',
+  'most',
+  'maximum',
+  'max',
+  'within',
+  'no',
+  'more',
+  'minutes',
+  'minute',
+  'mins',
+  'min',
+  'must',
+  'take',
+  'plan',
+  'my',
+  'the',
+  'week',
+  'entire',
+  'whole',
+  'full',
+  'this',
+  'using',
+  'use',
+  'what',
+  'i',
+  'have',
+  'already',
+  'inventory',
+  'please',
+  'for',
+  'a',
+  'an',
+  'and',
+  'with',
+  'something',
+  'quick',
+  'from',
+  'on',
+  'hand',
+  'up',
+  'make',
+  'so',
+  'it',
+  'is',
+  'are',
+  'be',
+  'some',
+  'type',
+  'kind',
+  'like',
+  'etc',
+  'ie',
+  'eg',
+  'or',
+  'to',
+  'of',
+  'any',
+  'all',
+  'meals',
+  'meal',
+  'food',
+  'recipe',
+  'recipes',
+  'based',
+  'about',
+  'around',
+  'maybe',
+  'just',
+  'only',
+  'also',
+  'can',
+  'could',
+  'would',
+  'should',
+  'want',
+  'needs',
+  'need',
+  'slot',
+  'slots',
+])
+
+/** Keep culinary intent words that stopword stripping might otherwise bury. */
+const FOOD_HINTS = [
+  'egg',
+  'eggs',
+  'scrambled',
+  'fried',
+  'omelette',
+  'omelet',
+  'poached',
+  'boiled',
+  'breakfast',
+  'pancake',
+  'pancakes',
+  'waffle',
+  'toast',
+  'oatmeal',
+  'yogurt',
+  'chicken',
+  'beef',
+  'pork',
+  'fish',
+  'salmon',
+  'shrimp',
+  'tofu',
+  'pasta',
+  'rice',
+  'noodle',
+  'soup',
+  'salad',
+  'taco',
+  'tacos',
+  'curry',
+  'stir',
+  'fry',
+  'bowl',
+  'sandwich',
+  'burger',
+  'pizza',
+  'italian',
+  'mexican',
+  'chinese',
+  'japanese',
+  'indian',
+  'thai',
+  'korean',
+  'mediterranean',
+  'vegetarian',
+  'vegan',
+]
+
 export interface PlanRequest {
   days: Weekday[]
   slots: MealSlot[]
@@ -28,6 +163,8 @@ export interface PlanRequest {
   wantWeek: boolean
   preferInventory: boolean
   queryText: string
+  /** Explicit food/cuisine intents from the user message. */
+  foodFocus: string[]
 }
 
 export function parsePlanRequest(message: string): PlanRequest {
@@ -52,15 +189,17 @@ export function parsePlanRequest(message: string): PlanRequest {
   const wantWeek = /\b(whole week|entire week|full week|plan (?:my |the )?week|this week)\b/.test(lower)
   const preferInventory = /\b(inventory|what i have|already have|use up|on hand)\b/.test(lower)
 
+  const foodFocus = FOOD_HINTS.filter((hint) => new RegExp(`\\b${hint}\\b`, 'i').test(lower))
+
   let query = lower
   query = query.replace(dayPattern(), ' ')
   query = query.replace(/\b(breakfasts?|lunches?|dinners?|meals?)\b/g, ' ')
-  query = query.replace(
-    /\b(under|less|than|at|most|maximum|max|within|no|more|minutes|minute|mins|min|must|take|plan|my|the|week|entire|whole|full|this|using|use|what|i|have|already|inventory|please|for|a|an|and|with|something|quick|from|on|hand|up)\b/g,
-    ' ',
-  )
   query = query.replace(/\d+/g, ' ')
   query = query.replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  const queryWords = query
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length > 2 && !STOPWORDS.has(word))
 
   return {
     days: WEEKDAYS.filter((day) => days.has(day)),
@@ -68,7 +207,8 @@ export function parsePlanRequest(message: string): PlanRequest {
     maxMinutes: maxMinutes != null && Number.isFinite(maxMinutes) ? maxMinutes : null,
     wantWeek,
     preferInventory,
-    queryText: query,
+    queryText: [...new Set([...foodFocus, ...queryWords])].join(' '),
+    foodFocus: [...new Set(foodFocus)],
   }
 }
 

@@ -9,6 +9,7 @@ import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { InventoryItem, Meal, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAYS } from '../data/types'
+import { consumeMealFromInventory } from '../lib/consume'
 import { addWeeks, formatDayHeading, formatWeekRange, mondayOf } from '../lib/dates'
 import { moveMeal } from '../lib/meals'
 import type { Suggestion } from '../lib/planner'
@@ -22,6 +23,7 @@ export function MealsPage() {
   const [feedback, setFeedback] = useState<MealFeedback[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [finishingKey, setFinishingKey] = useState<string | null>(null)
   const [editor, setEditor] = useState<{ day: Weekday; slot: MealSlot; meal: Meal | null } | null>(null)
   const [details, setDetails] = useState<Meal | null>(null)
 
@@ -80,8 +82,45 @@ export function MealsPage() {
 
   async function updateCell(day: Weekday, slot: MealSlot, meal: Meal | null) {
     if (!week) return
-    const cells = week.cells.map((cell) => (cell.day === day && cell.slot === slot ? { ...cell, meal } : cell))
+    const cells = week.cells.map((cell) =>
+      cell.day === day && cell.slot === slot ? { ...cell, meal, finished: false } : cell,
+    )
     await saveWeek({ ...week, cells })
+  }
+
+  async function finishMeal(day: Weekday, slot: MealSlot) {
+    if (!store || !week) return
+    const cell = week.cells.find((item) => item.day === day && item.slot === slot)
+    if (!cell?.meal || cell.finished) return
+    const key = `${day}:${slot}`
+    setFinishingKey(key)
+    setError(null)
+    try {
+      const { inventory: nextInventory, deducted } = consumeMealFromInventory(cell.meal, inventory)
+      await store.replaceInventory(nextInventory)
+      setInventory(nextInventory)
+      await store.addConsumption({
+        mealName: cell.meal.name,
+        day,
+        slot,
+        weekStart,
+        items: deducted.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          inventoryBefore: item.inventoryBefore,
+          inventoryAfter: item.inventoryAfter,
+        })),
+      })
+      const cells = week.cells.map((item) =>
+        item.day === day && item.slot === slot ? { ...item, finished: true } : item,
+      )
+      await saveWeek({ ...week, cells })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not mark meal finished.')
+    } finally {
+      setFinishingKey(null)
+    }
   }
 
   if (!store || !preferences) {
@@ -147,7 +186,7 @@ export function MealsPage() {
             const byCell = new Map(suggestions.map((item) => [`${item.day}:${item.slot}`, item]))
             const cells = week.cells.map((cell) => {
               const hit = byCell.get(`${cell.day}:${cell.slot}`)
-              return hit ? { ...cell, meal: hit.meal } : cell
+              return hit ? { ...cell, meal: hit.meal, finished: false } : cell
             })
             await saveWeek({ ...week, cells })
             for (const suggestion of suggestions) {
@@ -190,6 +229,7 @@ export function MealsPage() {
                       key={`${day}-${slot}`}
                       cell={cell}
                       inventory={inventory}
+                      finishing={finishingKey === `${day}:${slot}`}
                       onAssign={() => setEditor({ day, slot, meal: null })}
                       onEdit={() => setEditor({ day, slot, meal: cell.meal })}
                       onRemove={() => void updateCell(day, slot, null)}
@@ -198,6 +238,7 @@ export function MealsPage() {
                         const cells = moveMeal(week.cells, { day, slot }, to)
                         await saveWeek({ ...week, cells })
                       }}
+                      onFinish={() => void finishMeal(day, slot)}
                     />
                   )
                 })}

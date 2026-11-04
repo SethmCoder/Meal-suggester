@@ -40,6 +40,8 @@ export interface Profile {
   email: string
   avatarUrl: string | null
   tutorialCompleted: boolean
+  /** Food-preference onboarding survey finished (or skipped). Separate from tutorial. */
+  surveyCompleted: boolean
   autoStartTutorial: boolean
   openOnCurrentWeek: boolean
 }
@@ -49,6 +51,7 @@ export interface ProfileUpdate {
   email?: string
   avatarUrl?: string | null
   tutorialCompleted?: boolean
+  surveyCompleted?: boolean
   autoStartTutorial?: boolean
   openOnCurrentWeek?: boolean
   currentPassword?: string
@@ -95,6 +98,37 @@ export interface MealCell {
   slot: MealSlot
   meal: Meal | null
   constraint: TimeConstraint | null
+  /** True after the user marks this meal as eaten/finished. */
+  finished?: boolean
+}
+
+/** A grocery purchase recorded for the expenses ledger. */
+export interface Purchase {
+  id: string
+  name: string
+  quantity: number
+  unit: string
+  estimatedCostUsd: number | null
+  purchasedAt: string
+  source: 'shopping' | 'manual' | 'inventory'
+  ingredientKey: string
+}
+
+/** Inventory deducted when a planned meal is marked finished. */
+export interface Consumption {
+  id: string
+  mealName: string
+  day: Weekday
+  slot: MealSlot
+  weekStart: string
+  finishedAt: string
+  items: {
+    name: string
+    quantity: number
+    unit: string
+    inventoryBefore: number
+    inventoryAfter: number
+  }[]
 }
 
 export interface WeekPlan {

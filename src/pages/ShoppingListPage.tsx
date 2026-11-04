@@ -7,7 +7,8 @@ import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { InventoryItem, MealFeedback, Preferences, WeekPlan } from '../data/types'
 import { addWeeks, formatWeekRange, mondayOf } from '../lib/dates'
-import { buildShoppingList } from '../lib/ingredients'
+import { estimatePurchaseCost } from '../lib/finance'
+import { buildShoppingList, ingredientKey } from '../lib/ingredients'
 import { optimizeWeekForShopping } from '../lib/optimizeShopping'
 import {
   detectRunningLow,
@@ -242,10 +243,34 @@ export function ShoppingListPage() {
             onTogglePurchased={async (key, purchasedFlag) => {
               await store.setPurchased(weekStart, key, purchasedFlag)
               setPurchased(await store.listPurchased(weekStart))
+              if (purchasedFlag) {
+                const row = shoppingRows.find((item) => item.key === key)
+                if (row) {
+                  const qty = row.quantity && row.quantity > 0 ? row.quantity : 1
+                  const unit = row.unit || 'piece'
+                  await store.addPurchase({
+                    name: row.name,
+                    quantity: qty,
+                    unit,
+                    estimatedCostUsd: estimatePurchaseCost(row.name, qty, unit),
+                    source: 'shopping',
+                    ingredientKey: key,
+                  })
+                }
+              }
             }}
             onAddToInventory={async (item) => {
               await store.upsertInventory(item)
               setInventory(await store.listInventory())
+              const key = ingredientKey(item.name)
+              await store.addPurchase({
+                name: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                estimatedCostUsd: estimatePurchaseCost(item.name, item.quantity, item.unit),
+                source: 'inventory',
+                ingredientKey: key,
+              })
             }}
           />
           <RunningLowPanel
@@ -261,9 +286,21 @@ export function ShoppingListPage() {
               setRunningLow((prev) => prev.filter((item) => item.key !== key))
             }}
             onMarkPurchased={(key) => {
-              void store.setPurchased(weekStart, key, true).then(async () => {
+              void (async () => {
+                await store.setPurchased(weekStart, key, true)
                 setPurchased(await store.listPurchased(weekStart))
-              })
+                const item = visibleRunningLow.find((row) => row.key === key)
+                if (item) {
+                  await store.addPurchase({
+                    name: item.name,
+                    quantity: 1,
+                    unit: 'piece',
+                    estimatedCostUsd: estimatePurchaseCost(item.name, 1, 'piece'),
+                    source: 'shopping',
+                    ingredientKey: key,
+                  })
+                }
+              })()
               if (!profile) return
               const dismissed = new Set(loadDismissedRunningLow(weekStart, profile.id))
               dismissed.add(key)
@@ -273,6 +310,14 @@ export function ShoppingListPage() {
             onAddToInventory={async (item) => {
               await store.upsertInventory(item)
               setInventory(await store.listInventory())
+              await store.addPurchase({
+                name: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                estimatedCostUsd: estimatePurchaseCost(item.name, item.quantity, item.unit),
+                source: 'inventory',
+                ingredientKey: ingredientKey(item.name),
+              })
             }}
           />
         </>

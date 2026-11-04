@@ -4,7 +4,14 @@ import { normalizeWeek } from '../lib/meals'
 import { supabase } from '../lib/supabaseClient'
 import { validateEmail, validatePassword, validateUsername } from '../lib/validation'
 import type { DataStore } from './store'
+import {
+  addLedgerConsumption,
+  addLedgerPurchase,
+  listLedgerConsumptions,
+  listLedgerPurchases,
+} from './ledgerStorage'
 import type {
+  Consumption,
   FoodCategory,
   InventoryItem,
   Meal,
@@ -14,6 +21,7 @@ import type {
   Preferences,
   Profile,
   ProfileUpdate,
+  Purchase,
   SkillLevel,
   TimeConstraint,
   Weekday,
@@ -26,6 +34,7 @@ interface ProfileRow {
   email: string
   avatar_url: string | null
   tutorial_completed: boolean
+  survey_completed?: boolean | null
   auto_start_tutorial: boolean
   open_on_current_week: boolean
   last_week_start: string | null
@@ -47,9 +56,11 @@ function toProfile(row: ProfileRow): Profile {
     email: row.email,
     avatarUrl: row.avatar_url,
     tutorialCompleted: row.tutorial_completed,
+    // Missing column (pre-migration) → treat as completed.
+    surveyCompleted: Boolean(row.survey_completed ?? true),
     autoStartTutorial: row.auto_start_tutorial,
     openOnCurrentWeek: row.open_on_current_week,
-    }
+  }
 }
 
 async function readProfile(userId: string): Promise<ProfileRow> {
@@ -74,6 +85,7 @@ export async function loadSupabaseProfile(user: User): Promise<{ profile: Profil
     id: user.id,
     username,
     email: user.email ?? '',
+    survey_completed: false,
   })
   fail(error)
   return { profile: await store.getProfile(), store }
@@ -117,6 +129,7 @@ export function createSupabaseStore(userId: string): DataStore {
       if (input.email != null) patch.email = input.email.trim().toLowerCase()
       if (input.avatarUrl !== undefined) patch.avatar_url = input.avatarUrl
       if (input.tutorialCompleted != null) patch.tutorial_completed = input.tutorialCompleted
+      if (input.surveyCompleted != null) patch.survey_completed = input.surveyCompleted
       if (input.autoStartTutorial != null) patch.auto_start_tutorial = input.autoStartTutorial
       if (input.openOnCurrentWeek != null) patch.open_on_current_week = input.openOnCurrentWeek
       if (Object.keys(patch).length) {
@@ -156,6 +169,34 @@ export function createSupabaseStore(userId: string): DataStore {
       const { error } = await client.from('inventory_items').delete().eq('id', id).eq('user_id', userId)
       fail(error)
     },
+    async replaceInventory(items: InventoryItem[]) {
+      const client = requireClient()
+      const { data, error } = await client.from('inventory_items').select('id').eq('user_id', userId)
+      fail(error)
+      const nextIds = new Set(items.map((item) => item.id))
+      for (const row of data ?? []) {
+        if (!nextIds.has(String(row.id))) {
+          const { error: deleteError } = await client
+            .from('inventory_items')
+            .delete()
+            .eq('id', row.id)
+            .eq('user_id', userId)
+          fail(deleteError)
+        }
+      }
+      for (const item of items) {
+        const { error: upsertError } = await client.from('inventory_items').upsert({
+          id: item.id,
+          user_id: userId,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          expires_on: item.expiresOn,
+          category: item.category,
+        })
+        fail(upsertError)
+      }
+    },
     async getWeek(weekStart: string) {
       const client = requireClient()
       const { data, error } = await client
@@ -169,6 +210,7 @@ export function createSupabaseStore(userId: string): DataStore {
         slot: row.slot as MealSlot,
         meal: (row.meal as Meal | null) ?? null,
         constraint: (row.time_constraint as TimeConstraint | null) ?? null,
+        finished: Boolean(row.finished),
       }))
       return normalizeWeek(weekStart, cells)
     },
@@ -182,8 +224,18 @@ export function createSupabaseStore(userId: string): DataStore {
         slot: cell.slot,
         meal: cell.meal,
         time_constraint: cell.constraint,
+        finished: Boolean(cell.finished),
       }))
       const { error } = await client.from('meal_slots').upsert(rows, { onConflict: 'user_id,week_start,day,slot' })
+      // Older schemas without `finished` — retry without the column.
+      if (error && /finished/i.test(error.message)) {
+        const legacy = rows.map(({ finished: _f, ...rest }) => rest)
+        const { error: retryError } = await client
+          .from('meal_slots')
+          .upsert(legacy, { onConflict: 'user_id,week_start,day,slot' })
+        fail(retryError)
+        return
+      }
       fail(error)
     },
     async getPreferences() {
@@ -254,6 +306,37 @@ export function createSupabaseStore(userId: string): DataStore {
         purchased,
       })
       fail(insertError)
+    },
+    async listPurchases() {
+      return listLedgerPurchases(userId)
+    },
+    async addPurchase(purchase) {
+      const row: Purchase = {
+        id: purchase.id ?? createId(),
+        name: purchase.name,
+        quantity: purchase.quantity,
+        unit: purchase.unit,
+        estimatedCostUsd: purchase.estimatedCostUsd,
+        purchasedAt: purchase.purchasedAt ?? new Date().toISOString(),
+        source: purchase.source,
+        ingredientKey: purchase.ingredientKey,
+      }
+      return addLedgerPurchase(userId, row)
+    },
+    async listConsumptions() {
+      return listLedgerConsumptions(userId)
+    },
+    async addConsumption(entry) {
+      const row: Consumption = {
+        id: entry.id ?? createId(),
+        mealName: entry.mealName,
+        day: entry.day,
+        slot: entry.slot,
+        weekStart: entry.weekStart,
+        finishedAt: entry.finishedAt ?? new Date().toISOString(),
+        items: entry.items,
+      }
+      return addLedgerConsumption(userId, row)
     },
     async listFeedback() {
       const client = requireClient()

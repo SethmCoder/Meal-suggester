@@ -194,7 +194,26 @@ function mapSpoonacular(result: SpoonacularResult): RetrievedRecipe {
   return recipe
 }
 
+/** Spoonacular free tier returns HTTP 402 when the daily points budget is spent. */
+let spoonacularBlockedUntil = 0
+let spoonacularBlockReason: string | null = null
+
+export function getSpoonacularQuotaStatus(): { blocked: boolean; reason: string | null } {
+  return {
+    blocked: Date.now() < spoonacularBlockedUntil,
+    reason: Date.now() < spoonacularBlockedUntil ? spoonacularBlockReason : null,
+  }
+}
+
+function blockSpoonacular(reason: string) {
+  // Free daily quota resets on a rolling day; keep calls off for several hours.
+  spoonacularBlockedUntil = Date.now() + 6 * 60 * 60 * 1000
+  spoonacularBlockReason = reason
+}
+
 async function searchSpoonacular(term: string, apiKey: string, number = 5): Promise<RetrievedRecipe[]> {
+  if (Date.now() < spoonacularBlockedUntil) return []
+
   const url = new URL('https://api.spoonacular.com/recipes/complexSearch')
   url.searchParams.set('query', term)
   url.searchParams.set('number', String(number))
@@ -202,8 +221,21 @@ async function searchSpoonacular(term: string, apiKey: string, number = 5): Prom
   url.searchParams.set('fillIngredients', 'true')
   url.searchParams.set('instructionsRequired', 'true')
   url.searchParams.set('apiKey', apiKey)
-  const payload = await fetchJson<{ results?: SpoonacularResult[] }>(url.toString())
-  return (payload.results ?? []).map(mapSpoonacular)
+
+  try {
+    const response = await fetch(url.toString())
+    if (response.status === 402) {
+      blockSpoonacular(
+        'Spoonacular free daily points limit reached (HTTP 402). Planora will keep using TheMealDB and preferred-site scrape until the quota resets.',
+      )
+      return []
+    }
+    if (!response.ok) return []
+    const payload = (await response.json()) as { results?: SpoonacularResult[] }
+    return (payload.results ?? []).map(mapSpoonacular)
+  } catch {
+    return []
+  }
 }
 
 /** Local Vite middleware scrapes preferred publisher search pages + Recipe JSON-LD. */
@@ -251,22 +283,34 @@ function rankByPreferredSources(recipes: RetrievedRecipe[], publishers: RecipePu
 export interface RetrieveOptions {
   /** Aim to collect at least this many distinct recipes (default 14). */
   minCount?: number
+  /** Extra MealDB categories to always pull (diet / breakfast bias). */
+  boostCategories?: string[]
 }
 
 export async function retrieveRecipes(
   terms: string[],
   preferredSiteIds: string[] = [],
   options?: RetrieveOptions,
-): Promise<{ recipes: RetrievedRecipe[]; broadened: boolean; preferredHits: number }> {
+): Promise<{
+  recipes: RetrievedRecipe[]
+  broadened: boolean
+  preferredHits: number
+  spoonacularBlocked: boolean
+  spoonacularMessage: string | null
+}> {
   const minCount = options?.minCount ?? 14
   const hardCap = Math.max(minCount + 12, 36)
-  const nameLimit = minCount >= 20 ? 10 : 4
-  const ingredientLimit = minCount >= 20 ? 8 : 3
-  const spoonLimit = minCount >= 20 ? 12 : 6
+  const nameLimit = minCount >= 20 ? 10 : 6
+  const ingredientLimit = minCount >= 20 ? 8 : 5
+  const spoonLimit = minCount >= 20 ? 12 : 8
   const unique = new Map<string, RetrievedRecipe>()
   const spoonKey = import.meta.env.VITE_SPOONACULAR_API_KEY
   const publishers = preferredPublishers(preferredSiteIds)
   const termList = terms.slice(0, minCount >= 20 ? 10 : 8)
+
+  for (const category of options?.boostCategories ?? []) {
+    await addMealDbIds(unique, await mealDbIdsByCategory(category, 10), hardCap)
+  }
 
   for (const [index, term] of termList.entries()) {
     const trimmed = term.trim()
@@ -304,13 +348,12 @@ export async function retrieveRecipes(
     broadened = true
     const categories =
       minCount >= 20
-        ? ['Breakfast', 'Chicken', 'Seafood', 'Pasta', 'Vegetarian', 'Beef', 'Side', 'Starter', 'Miscellaneous', 'Goat', 'Lamb', 'Pork', 'Vegan']
-        : ['Vegetarian', 'Breakfast']
+        ? ['Breakfast', 'Chicken', 'Seafood', 'Pasta', 'Vegetarian', 'Beef', 'Side', 'Starter', 'Miscellaneous', 'Vegan']
+        : ['Vegetarian', 'Breakfast', 'Vegan', 'Chicken']
     for (const category of categories) {
       if (unique.size >= minCount) break
-      await addMealDbIds(unique, await mealDbIdsByCategory(category, minCount >= 20 ? 8 : 4), hardCap)
+      await addMealDbIds(unique, await mealDbIdsByCategory(category, minCount >= 20 ? 8 : 6), hardCap)
     }
-    // Pull extra breakfast options so morning slots are not filled with desserts.
     if (minCount >= 20) {
       await addMealDbIds(unique, await mealDbIdsByCategory('Breakfast', 12), hardCap)
     }
@@ -324,5 +367,11 @@ export async function retrieveRecipes(
 
   const ranked = rankByPreferredSources([...unique.values()], publishers)
   const preferredHits = ranked.filter((recipe) => matchesPublisher(recipe, publishers)).length
-  return { recipes: ranked.slice(0, hardCap), broadened, preferredHits }
+  return {
+    recipes: ranked.slice(0, hardCap),
+    broadened,
+    preferredHits,
+    spoonacularBlocked: getSpoonacularQuotaStatus().blocked,
+    spoonacularMessage: getSpoonacularQuotaStatus().reason,
+  }
 }

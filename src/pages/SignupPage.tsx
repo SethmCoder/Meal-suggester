@@ -13,7 +13,9 @@ export function SignupPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (profile) return <Navigate to="/app" replace />
+  if (profile) {
+    return <Navigate to={profile.surveyCompleted ? '/app' : '/onboarding'} replace />
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -21,7 +23,7 @@ export function SignupPage() {
     setError(null)
     try {
       await signup({ email, username, password })
-      navigate('/app')
+      navigate('/onboarding')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-up failed.')
     } finally {

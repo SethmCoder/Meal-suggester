@@ -113,6 +113,8 @@ const FRACTIONS: Record<string, string> = {
 
 export function canonicalUnit(unit: string | null | undefined): string | null {
   if (!unit) return null
+  // Reject quantity+unit tokens like "500g" — digits belong to the amount, not the unit.
+  if (/\d/.test(unit)) return null
   const key = unit.toLowerCase().replace(/[^a-z]/g, '')
   return UNIT_ALIASES[key] ?? null
 }
@@ -143,14 +145,14 @@ export function roundQty(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-function toBase(quantity: number, unit: string): { family: Family; amount: number } | null {
+export function toBase(quantity: number, unit: string): { family: Family; amount: number } | null {
   const canon = canonicalUnit(unit)
   if (!canon) return null
   const spec = TO_BASE[canon]
   return { family: spec.family, amount: quantity * spec.factor }
 }
 
-function fromBase(amount: number, unit: string): number {
+export function fromBase(amount: number, unit: string): number {
   const canon = canonicalUnit(unit)
   if (!canon) return amount
   return amount / TO_BASE[canon].factor
@@ -164,21 +166,23 @@ export function parseIngredientLine(line: string): Ingredient | null {
 
   let amount: number | null = null
   let rest = raw
-  const mixed = raw.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)\s+(.+)$/)
-  const fraction = raw.match(/^(\d+)\s*\/\s*(\d+)\s+(.+)$/)
-  const number = raw.match(/^(\d+(?:\.\d+)?)\s+(.+)$/)
-  if (mixed) {
+  // Allow optional whitespace after the amount so MealDB-style "500g Ricotta" and "1/2cup"
+  // still yield a numeric quantity (space between number and unit is not required).
+  const mixed = raw.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)\s*(.*)$/)
+  const fraction = raw.match(/^(\d+)\s*\/\s*(\d+)\s*(.*)$/)
+  const number = raw.match(/^(\d+(?:\.\d+)?)\s*(.*)$/)
+  if (mixed && mixed[4].trim()) {
     amount = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3])
-    rest = mixed[4]
-  } else if (fraction) {
+    rest = mixed[4].trim()
+  } else if (fraction && fraction[3].trim()) {
     amount = Number(fraction[1]) / Number(fraction[2])
-    rest = fraction[3]
-  } else if (number) {
+    rest = fraction[3].trim()
+  } else if (number && number[2].trim()) {
     amount = Number(number[1])
-    rest = number[2]
+    rest = number[2].trim()
   }
 
-  const tokens = rest.split(/\s+/)
+  const tokens = rest.split(/\s+/).filter(Boolean)
   let unit: string | null = null
   if (tokens.length > 1 && canonicalUnit(tokens[0])) {
     unit = canonicalUnit(tokens[0])

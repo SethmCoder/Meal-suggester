@@ -74,13 +74,15 @@ export function dietConflict(ingredientNames: string[], mealName: string, dietar
       if (has([...MEAT, ...FISH, ...SHELLFISH])) return rule
     } else if (name.includes('pescatarian')) {
       if (has(MEAT)) return rule
-    } else if (name.includes('gluten')) {
+    } else if (name.includes('gluten-free') || name.includes('gluten free') || name === 'gluten') {
       if (has(GLUTEN)) return rule
-    } else if (name.includes('dairy')) {
+    } else if (name.includes('dairy-free') || name.includes('dairy free') || name === 'dairy') {
       if (has(DAIRY)) return rule
-    } else if ((name.includes('halal') || name.includes('kosher')) && (has(PORK) || has(ALCOHOL))) {
-      return rule
+    } else if (name.includes('halal') || name.includes('kosher')) {
+      if (has(PORK) || has(ALCOHOL)) return rule
     }
+    // keto / paleo / low-carb are handled as search bias, not hard ingredient bans,
+    // because MealDB catalogs rarely survive those filters.
   }
   return null
 }
@@ -93,4 +95,29 @@ export function dislikedConflict(ingredientNames: string[], mealName: string, di
     if (haystackHas(values, key)) return item
   }
   return null
+}
+
+/** Extra recipe-search terms derived from dietary preferences. */
+export function dietSearchTerms(dietary: string[]): string[] {
+  const terms: string[] = []
+  const joined = dietary.join(' ').toLowerCase()
+  if (joined.includes('vegan')) terms.push('vegan', 'tofu', 'lentil', 'chickpea')
+  else if (joined.includes('vegetarian')) terms.push('vegetarian', 'vegetable', 'bean', 'paneer')
+  if (joined.includes('pescatarian')) terms.push('salmon', 'fish', 'shrimp')
+  if (joined.includes('gluten')) terms.push('rice', 'potato', 'salad', 'quinoa')
+  if (joined.includes('dairy')) terms.push('dairy free', 'coconut', 'oat')
+  if (joined.includes('keto') || joined.includes('low-carb') || joined.includes('low carb')) {
+    terms.push('chicken', 'egg', 'salad', 'avocado')
+  }
+  if (joined.includes('halal') || joined.includes('kosher')) terms.push('chicken', 'beef', 'rice')
+  return [...new Set(terms)]
+}
+
+/** MealDB categories that fit common diet labels. */
+export function dietMealDbCategories(dietary: string[]): string[] {
+  const joined = dietary.join(' ').toLowerCase()
+  if (joined.includes('vegan')) return ['Vegan', 'Vegetarian', 'Side', 'Breakfast']
+  if (joined.includes('vegetarian')) return ['Vegetarian', 'Vegan', 'Breakfast', 'Side']
+  if (joined.includes('pescatarian')) return ['Seafood', 'Vegetarian', 'Breakfast']
+  return []
 }
