@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Button, ErrorText, FieldLabel, TextInput } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import { DEMO_PASSWORD } from '../data/types'
+import { mondayOf } from '../lib/dates'
+import { emailWeekPlanEnabled, openMealPlanEmail, setEmailWeekPlanEnabled } from '../lib/mealPlanExport'
+import { supabase } from '../lib/supabaseClient'
 
 export function SettingsPage() {
   const { store, profile, mode, setProfile, refreshProfile } = useSession()
@@ -145,6 +148,160 @@ export function SettingsPage() {
           </Button>
         </div>
       </form>
+      <WeeklyPlanEmail />
+      <PhoneTexting />
     </div>
+  )
+}
+
+function WeeklyPlanEmail() {
+  const { profile, store } = useSession()
+  const [enabled, setEnabled] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!profile) return
+    setEnabled(emailWeekPlanEnabled(profile.id))
+  }, [profile])
+
+  if (!profile || !store) return null
+
+  return (
+    <section className="soft-shadow mt-6 space-y-3 rounded-2xl border border-line bg-surface p-5">
+      <h2 className="text-lg font-bold text-ink">Email the weekly plan</h2>
+      <p className="text-sm text-muted">
+        When this is on, Planora opens an email to {profile.email || 'your account email'} with the current week. Your mail app sends it. No extra email service is required.
+      </p>
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => {
+            const next = event.target.checked
+            setError(null)
+            setNote(null)
+            if (next && !profile.email) {
+              setError('Add an email address above before turning this on.')
+              return
+            }
+            setEnabled(next)
+            setEmailWeekPlanEnabled(profile.id, next)
+            if (!next) {
+              setNote('Weekly email is off.')
+              return
+            }
+            void store.getWeek(mondayOf(new Date())).then((week) => {
+              openMealPlanEmail({ to: profile.email, weekStart: week.weekStart, cells: week.cells })
+              setNote('Your mail app should open with this week’s plan. Use Email this week on Current Meals to send it again.')
+            })
+          }}
+        />
+        Email me the meal plan for the week
+      </label>
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {note ? <p className="text-sm text-ink">{note}</p> : null}
+    </section>
+  )
+}
+
+function PhoneTexting() {
+  const { mode, profile, refreshProfile } = useSession()
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function call(body: { action: 'send' | 'confirm'; phone?: string; code?: string }) {
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token
+    if (!token) throw new Error('Sign in again to link a phone.')
+    const response = await fetch('/api/sms/verify', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const payload = (await response.json()) as { error?: string; phone?: string }
+    if (!response.ok) throw new Error(payload.error || 'Could not update texting.')
+    return payload
+  }
+
+  if (mode !== 'supabase') {
+    return (
+      <section className="soft-shadow mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="text-lg font-bold text-ink">Text Planora</h2>
+        <p className="mt-1 text-sm text-muted">
+          Texting works on a cloud account. This session stays on this device, so a text cannot reach the list.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="soft-shadow mt-6 space-y-3 rounded-2xl border border-line bg-surface p-5">
+      <h2 className="text-lg font-bold text-ink">Text Planora</h2>
+      <p className="text-sm text-muted">
+        {profile?.phoneVerified && profile.phone
+          ? `Texts from ${profile.phone} can add groceries or change a meal. Reply includes the week grid.`
+          : 'Verify a mobile number. Then text “add milk” or “different dinner Tuesday”.'}
+      </p>
+      <div>
+        <FieldLabel htmlFor="settings-phone">Mobile number</FieldLabel>
+        <TextInput
+          id="settings-phone"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder="(415) 555-1212"
+          autoComplete="tel"
+        />
+      </div>
+      <Button
+        type="button"
+        disabled={busy || !phone.trim()}
+        onClick={() => {
+          setBusy(true)
+          setError(null)
+          setMessage(null)
+          void call({ action: 'send', phone })
+            .then((payload) => {
+              setSent(true)
+              setMessage(`Code sent to ${payload.phone ?? 'your phone'}.`)
+            })
+            .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not send the code.'))
+            .finally(() => setBusy(false))
+        }}
+      >
+        {busy ? 'Sending…' : 'Text me a code'}
+      </Button>
+      {sent ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <FieldLabel htmlFor="settings-code">Code</FieldLabel>
+            <TextInput id="settings-code" value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" />
+          </div>
+          <Button
+            type="button"
+            disabled={busy || code.trim().length < 6}
+            onClick={() => {
+              setBusy(true)
+              setError(null)
+              void call({ action: 'confirm', code })
+                .then(async () => {
+                  setMessage('This phone can text Planora.')
+                  setCode('')
+                  await refreshProfile()
+                })
+                .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not confirm the code.'))
+                .finally(() => setBusy(false))
+            }}
+          >
+            Confirm
+          </Button>
+        </div>
+      ) : null}
+      <ErrorText>{error}</ErrorText>
+      {message ? <p className="text-sm text-success">{message}</p> : null}
+    </section>
   )
 }

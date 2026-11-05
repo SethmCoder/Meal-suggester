@@ -3,6 +3,7 @@ import type {
   Consumption,
   InventoryItem,
   MealCell,
+  ManualShoppingItem,
   MealFeedback,
   Preferences,
   Profile,
@@ -36,6 +37,7 @@ interface UserBlob {
   weeks: Record<string, MealCell[]>
   preferences: Preferences
   purchased: Record<string, string[]>
+  manualShopping: Record<string, ManualShoppingItem[]>
   purchases: Purchase[]
   consumptions: Consumption[]
   feedback: MealFeedback[]
@@ -53,6 +55,7 @@ function emptyBlob(): UserBlob {
     weeks: {},
     preferences: emptyPreferences(),
     purchased: {},
+    manualShopping: {},
     purchases: [],
     consumptions: [],
     feedback: [],
@@ -65,6 +68,7 @@ function ensureBlob(blob: UserBlob): UserBlob {
     ...emptyBlob(),
     ...blob,
     purchases: Array.isArray(blob.purchases) ? blob.purchases : [],
+    manualShopping: blob.manualShopping && typeof blob.manualShopping === 'object' ? blob.manualShopping : {},
     consumptions: Array.isArray(blob.consumptions) ? blob.consumptions : [],
   }
 }
@@ -203,6 +207,33 @@ function createLocalStore(userId: string): DataStore {
       if (purchased) current.add(ingredientKey)
       else current.delete(ingredientKey)
       blob.purchased[weekStart] = [...current]
+      save(db, blob)
+    },
+    async listManualShopping(weekStart) {
+      return [...(load().blob.manualShopping[weekStart] ?? [])]
+    },
+    async addManualShopping(weekStart, item) {
+      const { db, blob } = load()
+      const row: ManualShoppingItem = {
+        id: item.id ?? createId(),
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        purchased: false,
+      }
+      const list = blob.manualShopping[weekStart] ?? []
+      list.push(row)
+      blob.manualShopping[weekStart] = list
+      save(db, blob)
+      return row
+    },
+    async setManualPurchased(id, purchased) {
+      const { db, blob } = load()
+      for (const week of Object.keys(blob.manualShopping)) {
+        blob.manualShopping[week] = (blob.manualShopping[week] ?? []).map((item) =>
+          item.id === id ? { ...item, purchased } : item,
+        )
+      }
       save(db, blob)
     },
     async listPurchases() {

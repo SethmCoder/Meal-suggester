@@ -44,6 +44,9 @@ export interface Profile {
   surveyCompleted: boolean
   autoStartTutorial: boolean
   openOnCurrentWeek: boolean
+  /** E.164 number, set after SMS verification. */
+  phone?: string | null
+  phoneVerified?: boolean
 }
 
 export interface ProfileUpdate {
@@ -92,6 +95,17 @@ export interface Meal {
   isLeftover?: boolean
   /** Id of the original cook. Shopping ignores a second purchase when that meal is also planned. */
   leftoverOf?: string | null
+  /** One-step dish shown as ingredients only, without a full recipe. */
+  simple?: boolean
+}
+
+/** A grocery line added by text, not derived from a planned meal. */
+export interface ManualShoppingItem {
+  id: string
+  name: string
+  quantity: number
+  unit: string
+  purchased: boolean
 }
 
 export interface TimeConstraint {

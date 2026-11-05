@@ -6,7 +6,7 @@ import { ShoppingCoach } from '../components/ShoppingCoach'
 import { ShoppingPanel } from '../components/ShoppingPanel'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
-import type { InventoryItem, MealFeedback, Preferences, WeekPlan } from '../data/types'
+import type { InventoryItem, ManualShoppingItem, MealFeedback, Preferences, WeekPlan } from '../data/types'
 import { addWeeks, formatWeekRange, mondayOf } from '../lib/dates'
 import { estimatePurchaseCost } from '../lib/finance'
 import { buildShoppingList, ingredientKey } from '../lib/ingredients'
@@ -30,6 +30,7 @@ export function ShoppingListPage() {
   const [preferences, setPreferences] = useState<Preferences | null>(null)
   const [feedback, setFeedback] = useState<MealFeedback[]>([])
   const [purchased, setPurchased] = useState<string[]>([])
+  const [manual, setManual] = useState<ManualShoppingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [optimizeBusy, setOptimizeBusy] = useState(false)
@@ -49,18 +50,20 @@ export function ShoppingListPage() {
       setLoading(true)
       setError(null)
       try {
-        const [nextWeek, nextInventory, nextPrefs, nextFeedback, nextPurchased] = await Promise.all([
+        const [nextWeek, nextInventory, nextPrefs, nextFeedback, nextPurchased, nextManual] = await Promise.all([
           store.getWeek(start),
           store.listInventory(),
           store.getPreferences(),
           store.listFeedback(),
           store.listPurchased(start),
+          store.listManualShopping(start),
         ])
         setWeek(nextWeek)
         setInventory(nextInventory)
         setPreferences(nextPrefs)
         setFeedback(nextFeedback)
         setPurchased(nextPurchased)
+        setManual(nextManual)
         await store.setLastWeekStart(start)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load the shopping list.')
@@ -95,10 +98,19 @@ export function ShoppingListPage() {
     return week.cells.filter((cell) => cell.meal).map((cell) => cell.meal!)
   }, [week])
 
-  const shoppingRows = useMemo(
-    () => buildShoppingList(plannedMeals, inventory, purchased),
-    [plannedMeals, inventory, purchased],
-  )
+  const shoppingRows = useMemo(() => {
+    const planned = buildShoppingList(plannedMeals, inventory, purchased)
+    const extra = manual.map((item) => ({
+      key: `manual:${item.id}`,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      status: item.purchased ? ('purchased' as const) : ('missing' as const),
+      haveQuantity: null,
+      mealNames: ['Texted in'],
+    }))
+    return [...planned, ...extra]
+  }, [plannedMeals, inventory, purchased, manual])
 
   const needKeys = useMemo(
     () => new Set(shoppingRows.filter((row) => row.status === 'missing').map((row) => row.key)),
@@ -349,8 +361,13 @@ export function ShoppingListPage() {
             rows={shoppingRows}
             prices={prices}
             onTogglePurchased={async (key, purchasedFlag) => {
-              await store.setPurchased(weekStart, key, purchasedFlag)
-              setPurchased(await store.listPurchased(weekStart))
+              if (key.startsWith('manual:')) {
+                await store.setManualPurchased(key.slice('manual:'.length), purchasedFlag)
+                setManual(await store.listManualShopping(weekStart))
+              } else {
+                await store.setPurchased(weekStart, key, purchasedFlag)
+                setPurchased(await store.listPurchased(weekStart))
+              }
               if (purchasedFlag) {
                 const row = shoppingRows.find((item) => item.key === key)
                 if (row) {

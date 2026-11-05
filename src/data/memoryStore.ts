@@ -6,6 +6,7 @@ import type {
   Consumption,
   InventoryItem,
   MealCell,
+  ManualShoppingItem,
   MealFeedback,
   Preferences,
   Profile,
@@ -20,6 +21,7 @@ interface MemoryBlob {
   weeks: Record<string, MealCell[]>
   preferences: Preferences
   purchased: Record<string, string[]>
+  manualShopping: Record<string, ManualShoppingItem[]>
   purchases: Purchase[]
   consumptions: Consumption[]
   feedback: MealFeedback[]
@@ -54,6 +56,7 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
     weeks: {},
     preferences: emptyPreferences(),
     purchased: {},
+    manualShopping: {},
     purchases: [],
     consumptions: [],
     feedback: [],
@@ -122,6 +125,29 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
       if (purchased) current.add(ingredientKey)
       else current.delete(ingredientKey)
       blob.purchased[weekStart] = [...current]
+    },
+    async listManualShopping(weekStart) {
+      return [...(blob.manualShopping[weekStart] ?? [])]
+    },
+    async addManualShopping(weekStart, item) {
+      const row: ManualShoppingItem = {
+        id: item.id ?? createId(),
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        purchased: false,
+      }
+      const list = blob.manualShopping[weekStart] ?? []
+      list.push(row)
+      blob.manualShopping[weekStart] = list
+      return row
+    },
+    async setManualPurchased(id, purchased) {
+      for (const week of Object.keys(blob.manualShopping)) {
+        blob.manualShopping[week] = (blob.manualShopping[week] ?? []).map((item) =>
+          item.id === id ? { ...item, purchased } : item,
+        )
+      }
     },
     async listPurchases() {
       return [...blob.purchases].sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt))

@@ -99,6 +99,7 @@ export function InventoryPage() {
       {loading ? <p className="text-sm text-muted">Loading inventory…</p> : null}
 
       <PhotoInventoryScan
+        guided={!loading && items.length === 0}
         onAddItems={async (next) => {
           for (const item of next) {
             await store.upsertInventory(item)

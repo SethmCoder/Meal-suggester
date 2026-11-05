@@ -104,6 +104,7 @@ async function compressDataUrl(dataUrl: string, maxEdge = 1280, quality = 0.72):
 export async function scanFoodPhoto(input: {
   dataUrl: string
   scene: ScanScene
+  zoneLabel?: string
 }): Promise<{ items: ScannedFoodDraft[]; summary: string }> {
   const base = aiBaseUrl()
   const key = aiApiKey()
@@ -143,7 +144,7 @@ export async function scanFoodPhoto(input: {
             content: [
               {
                 type: 'text',
-                text: `${sceneHint[input.scene]} Return only identifiable food items useful for a home inventory. If a quantity is unclear, use 1 piece. expiresOn should be YYYY-MM-DD only when a date is readable; otherwise null.`,
+                text: `${input.zoneLabel ? `This photo is specifically the ${input.zoneLabel}. ` : ''}${sceneHint[input.scene]} Return only identifiable food items useful for a home inventory. If a quantity is unclear, use 1 piece. expiresOn should be YYYY-MM-DD only when a date is readable; otherwise null.`,
               },
               {
                 type: 'image_url',

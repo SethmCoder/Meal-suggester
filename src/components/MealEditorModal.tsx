@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { Meal } from '../data/types'
 import { createId } from '../lib/id'
+import { simplifyMeal } from '../lib/simpleMeals'
 import { Button, ErrorText, FieldLabel, TextArea, TextInput } from './ui'
 
 interface MealEditorModalProps {
@@ -60,23 +61,26 @@ export function MealEditorModal({ title, initial, onClose, onSave }: MealEditorM
         .split('\n')
         .map((line) => line.trim())
         .filter(Boolean)
-      await onSave({
-        id: initial?.id ?? createId(),
-        name: draft.name.trim(),
-        ingredients,
-        instructions,
-        prepMinutes: draft.prepMinutes ? Number(draft.prepMinutes) : null,
-        cookMinutes: draft.cookMinutes ? Number(draft.cookMinutes) : null,
-        timeIsEstimated: Boolean(draft.prepMinutes || draft.cookMinutes) && !(initial && !initial.timeIsEstimated),
-        imageUrl: draft.imageUrl.trim() || null,
-        sourceName: draft.sourceName.trim() || null,
-        sourceUrl: draft.sourceUrl.trim() || null,
-        sourceRetrieved: initial?.sourceRetrieved ?? false,
-        sourcePageFetched: initial?.sourcePageFetched ?? false,
-        why: initial?.why,
-        isLeftover: initial?.isLeftover,
-        leftoverOf: initial?.leftoverOf,
-      })
+      await onSave(
+        simplifyMeal({
+          id: initial?.id ?? createId(),
+          name: draft.name.trim(),
+          ingredients,
+          instructions,
+          prepMinutes: draft.prepMinutes ? Number(draft.prepMinutes) : null,
+          cookMinutes: draft.cookMinutes ? Number(draft.cookMinutes) : null,
+          timeIsEstimated: Boolean(draft.prepMinutes || draft.cookMinutes) && !(initial && !initial.timeIsEstimated),
+          imageUrl: draft.imageUrl.trim() || null,
+          sourceName: draft.sourceName.trim() || null,
+          sourceUrl: draft.sourceUrl.trim() || null,
+          sourceRetrieved: initial?.sourceRetrieved ?? false,
+          sourcePageFetched: initial?.sourcePageFetched ?? false,
+          why: initial?.why,
+          isLeftover: initial?.isLeftover,
+          leftoverOf: initial?.leftoverOf,
+          simple: initial?.simple,
+        }),
+      )
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save meal.')

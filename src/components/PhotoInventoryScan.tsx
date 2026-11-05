@@ -3,11 +3,14 @@ import { Camera, ImagePlus, Trash2 } from 'lucide-react'
 import type { FoodCategory, InventoryItem } from '../data/types'
 import { CATEGORY_LABELS, FOOD_CATEGORIES, UNITS } from '../data/types'
 import { createId } from '../lib/id'
+import { FridgeScanGuide } from './FridgeScanGuide'
 import { fileToDataUrl, scanFoodPhoto, visionConfigured, type ScanScene, type ScannedFoodDraft } from '../lib/vision'
 import { Badge, Button, EmptyState, ErrorText, FieldLabel, TextInput, TextSelect } from './ui'
 
 interface PhotoInventoryScanProps {
   onAddItems: (items: InventoryItem[]) => Promise<void>
+  /** Empty inventory: walk through fridge photo targets before a single snapshot. */
+  guided?: boolean
 }
 
 type DraftRow = ScannedFoodDraft & { id: string; selected: boolean }
@@ -21,7 +24,7 @@ const SCENES: { id: ScanScene; label: string; help: string }[] = [
   { id: 'other', label: 'Other photo', help: 'Any clear food photo' },
 ]
 
-export function PhotoInventoryScan({ onAddItems }: PhotoInventoryScanProps) {
+export function PhotoInventoryScan({ onAddItems, guided = false }: PhotoInventoryScanProps) {
   const cameraRef = useRef<HTMLInputElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const [scene, setScene] = useState<ScanScene>('refrigerator')
@@ -31,6 +34,7 @@ export function PhotoInventoryScan({ onAddItems }: PhotoInventoryScanProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [skipGuide, setSkipGuide] = useState(false)
 
   async function processFile(file: File | null) {
     if (!file) return
@@ -110,6 +114,20 @@ export function PhotoInventoryScan({ onAddItems }: PhotoInventoryScanProps) {
         )}
       </div>
 
+      {guided && !skipGuide && !rows.length ? (
+        <FridgeScanGuide
+          onSkip={() => setSkipGuide(true)}
+          onDrafts={(items, note) => {
+            setSummary(note)
+            setRows(items.map((item) => ({ ...item, id: createId(), selected: true })))
+            setSkipGuide(true)
+            if (!items.length) setError('No food items were confidently identified. Retake a bubble or use one photo.')
+          }}
+        />
+      ) : null}
+
+      {guided && !skipGuide && !rows.length ? null : (
+      <>
       <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {SCENES.map((option) => (
           <button
@@ -158,6 +176,8 @@ export function PhotoInventoryScan({ onAddItems }: PhotoInventoryScanProps) {
           onChange={(e) => void processFile(e.target.files?.[0] ?? null)}
         />
       </div>
+      </>
+      )}
 
       {!visionConfigured() ? (
         <p className="mt-3 text-sm text-warning">

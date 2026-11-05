@@ -243,7 +243,10 @@ async function searchPreferredSites(term: string, siteIds: string[]): Promise<Re
   const scrapable = preferredPublishers(siteIds).filter((publisher) => publisher.searchUrlTemplate)
   if (!scrapable.length) return []
   try {
-    const url = new URL('/api/recipes/search', window.location.origin)
+    const serverHost = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VERCEL_URL
+    const origin = typeof window !== 'undefined' ? window.location.origin : serverHost ? `https://${serverHost}` : ''
+    if (!origin) return []
+    const url = new URL('/api/recipes/search', origin)
     url.searchParams.set('q', term)
     url.searchParams.set('sites', scrapable.map((publisher) => publisher.id).join(','))
     const response = await fetch(url.toString())
@@ -304,7 +307,9 @@ export async function retrieveRecipes(
   const ingredientLimit = minCount >= 20 ? 8 : 5
   const spoonLimit = minCount >= 20 ? 12 : 8
   const unique = new Map<string, RetrievedRecipe>()
-  const spoonKey = import.meta.env.VITE_SPOONACULAR_API_KEY
+  const spoonKey =
+    (import.meta.env.VITE_SPOONACULAR_API_KEY as string | undefined) ||
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITE_SPOONACULAR_API_KEY
   const publishers = preferredPublishers(preferredSiteIds)
   const termList = terms.slice(0, minCount >= 20 ? 10 : 8)
 

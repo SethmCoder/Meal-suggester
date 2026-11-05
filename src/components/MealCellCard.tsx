@@ -65,6 +65,7 @@ export function MealCellCard({
             </span>
           </button>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {meal.simple ? <Badge tone="neutral">Simple</Badge> : null}
             {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
             {finished ? <Badge tone="success">Finished</Badge> : null}
             {minutes != null ? <Badge tone="neutral">{minutes} min{meal.timeIsEstimated ? ' est.' : ''}</Badge> : null}
@@ -76,7 +77,8 @@ export function MealCellCard({
             ) : null}
           </div>
           {meal.why ? <p className="mt-2 text-xs leading-relaxed text-muted">{meal.why}</p> : null}
-          {meal.sourceUrl ? (
+          {meal.simple ? <p className="mt-2 text-xs text-muted">Ingredients only — no full recipe.</p> : null}
+          {!meal.simple && meal.sourceUrl ? (
             <a
               href={meal.sourceUrl}
               target="_blank"
@@ -180,9 +182,10 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
               </Badge>
             ) : null}
             <Badge tone={stock.missingCount ? 'accent' : 'success'}>{stock.label}</Badge>
+            {meal.simple ? <Badge tone="neutral">Simple</Badge> : null}
             {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
           </div>
-          {meal.sourceUrl ? (
+          {!meal.simple && meal.sourceUrl ? (
             <a
               href={meal.sourceUrl}
               target="_blank"
@@ -192,7 +195,7 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
               <ExternalLink className="h-4 w-4" />
               Open full recipe{meal.sourceName ? ` on ${meal.sourceName}` : ''}
             </a>
-          ) : meal.sourceName ? (
+          ) : !meal.simple && meal.sourceName ? (
             <p className="mt-2 text-sm text-muted">Source: {meal.sourceName} (no public link available)</p>
           ) : null}
         </div>
@@ -216,16 +219,20 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
           {!meal.ingredients.length ? <li>No ingredients listed.</li> : null}
         </ul>
       </div>
-      <div>
-        <h4 className="text-sm font-semibold text-ink">Instructions</h4>
-        <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
-          {meal.instructions.map((step, index) => (
-            <li key={index}>{step}</li>
-          ))}
-          {!meal.instructions.length ? <li>No instructions listed.</li> : null}
-        </ol>
-      </div>
-      {meal.sourceRetrieved && !meal.sourcePageFetched && meal.sourceUrl ? (
+      {meal.simple ? (
+        <p className="text-sm text-muted">This is a simple meal. Planora keeps the ingredient and skips a full recipe.</p>
+      ) : (
+        <div>
+          <h4 className="text-sm font-semibold text-ink">Instructions</h4>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
+            {meal.instructions.map((step, index) => (
+              <li key={index}>{step}</li>
+            ))}
+            {!meal.instructions.length ? <li>No instructions listed.</li> : null}
+          </ol>
+        </div>
+      )}
+      {!meal.simple && meal.sourceRetrieved && !meal.sourcePageFetched && meal.sourceUrl ? (
         <p className="text-xs text-muted">
           Link came from the recipe provider. Planora did not open the publisher page itself.
         </p>

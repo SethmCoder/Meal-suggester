@@ -5,6 +5,7 @@ import type {
   Preferences,
   Profile,
   ProfileUpdate,
+  ManualShoppingItem,
   Purchase,
   StoreMode,
   WeekPlan,
@@ -25,6 +26,9 @@ export interface DataStore {
   savePreferences(prefs: Preferences): Promise<void>
   listPurchased(weekStart: string): Promise<string[]>
   setPurchased(weekStart: string, ingredientKey: string, purchased: boolean): Promise<void>
+  listManualShopping(weekStart: string): Promise<ManualShoppingItem[]>
+  addManualShopping(weekStart: string, item: Omit<ManualShoppingItem, 'id' | 'purchased'> & { id?: string }): Promise<ManualShoppingItem>
+  setManualPurchased(id: string, purchased: boolean): Promise<void>
   listPurchases(): Promise<Purchase[]>
   addPurchase(purchase: Omit<Purchase, 'id' | 'purchasedAt'> & { id?: string; purchasedAt?: string }): Promise<Purchase>
   listConsumptions(): Promise<Consumption[]>

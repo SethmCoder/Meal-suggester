@@ -15,6 +15,7 @@ import type { MustEatFood } from '../lib/mustEat'
 import { suggestMeals } from '../lib/suggest'
 import { describeAppliedPattern, inferRecurringCaps, listObservations, recordWeekConstraints } from '../lib/timePatterns'
 import { addWeeks, formatDayHeading, formatWeekRange, mondayOf } from '../lib/dates'
+import { downloadMealPlanPdf, emailWeekPlanEnabled, openMealPlanEmail } from '../lib/mealPlanExport'
 import { moveMeal } from '../lib/meals'
 import type { Suggestion } from '../lib/planner'
 
@@ -185,6 +186,28 @@ export function MealsPage() {
           </Button>
         </div>
       </div>
+
+      {week ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="ghost" onClick={() => downloadMealPlanPdf(weekStart, week.cells)}>
+            Download PDF
+          </Button>
+          {profile && emailWeekPlanEnabled(profile.id) ? (
+            <Button
+              type="button"
+              onClick={() => {
+                if (!profile.email) {
+                  setError('Add an email in Settings before sending the plan.')
+                  return
+                }
+                openMealPlanEmail({ to: profile.email, weekStart, cells: week.cells })
+              }}
+            >
+              Email this week
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       {patternNote ? (

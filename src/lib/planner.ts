@@ -6,6 +6,7 @@ import { fitsMealSlot, slotScore } from './mealSlots'
 import { openPackageGaps, packageFillBonus } from './packages'
 import { totalMinutes } from './meals'
 import { preferredPublishers } from './recipeSources'
+import { simplifyMeal } from './simpleMeals'
 
 function recipeIngredientKeys(recipe: RetrievedRecipe): string[] {
   return recipe.ingredients.map((item) => ingredientKey(item.name)).filter(Boolean)
@@ -20,7 +21,7 @@ export interface Suggestion {
 }
 
 export function recipeToMeal(recipe: RetrievedRecipe): Meal {
-  return {
+  return simplifyMeal({
     id: createId(),
     name: recipe.name,
     ingredients: recipe.ingredients,
@@ -33,7 +34,7 @@ export function recipeToMeal(recipe: RetrievedRecipe): Meal {
     sourceUrl: recipe.sourceUrl,
     sourceRetrieved: true,
     sourcePageFetched: recipe.sourcePageFetched,
-  }
+  })
 }
 
 /** Join matcher reasons into one short paragraph stored on the meal. */

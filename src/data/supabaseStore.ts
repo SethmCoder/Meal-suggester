@@ -13,6 +13,7 @@ import {
 import type {
   Consumption,
   FoodCategory,
+  ManualShoppingItem,
   InventoryItem,
   Meal,
   MealCell,
@@ -38,6 +39,8 @@ interface ProfileRow {
   auto_start_tutorial: boolean
   open_on_current_week: boolean
   last_week_start: string | null
+  phone?: string | null
+  phone_verified?: boolean | null
 }
 
 function requireClient() {
@@ -60,6 +63,8 @@ function toProfile(row: ProfileRow): Profile {
     surveyCompleted: Boolean(row.survey_completed ?? true),
     autoStartTutorial: row.auto_start_tutorial,
     openOnCurrentWeek: row.open_on_current_week,
+    phone: row.phone ?? null,
+    phoneVerified: Boolean(row.phone_verified),
   }
 }
 
@@ -306,6 +311,51 @@ export function createSupabaseStore(userId: string): DataStore {
         purchased,
       })
       fail(insertError)
+    },
+    async listManualShopping(weekStart: string) {
+      const client = requireClient()
+      const { data, error } = await client
+        .from('manual_shopping_items')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('week_start', weekStart)
+      if (error && /manual_shopping_items|schema cache/i.test(error.message)) return []
+      fail(error)
+      return (data ?? []).map(
+        (row): ManualShoppingItem => ({
+          id: String(row.id),
+          name: String(row.name),
+          quantity: Number(row.quantity) || 1,
+          unit: String(row.unit || 'piece'),
+          purchased: Boolean(row.purchased),
+        }),
+      )
+    },
+    async addManualShopping(weekStart: string, item) {
+      const client = requireClient()
+      const row: ManualShoppingItem = {
+        id: item.id ?? createId(),
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        purchased: false,
+      }
+      const { error } = await client.from('manual_shopping_items').insert({
+        id: row.id,
+        user_id: userId,
+        week_start: weekStart,
+        name: row.name,
+        quantity: row.quantity,
+        unit: row.unit,
+        purchased: false,
+      })
+      fail(error)
+      return row
+    },
+    async setManualPurchased(id: string, purchased: boolean) {
+      const client = requireClient()
+      const { error } = await client.from('manual_shopping_items').update({ purchased }).eq('id', id).eq('user_id', userId)
+      fail(error)
     },
     async listPurchases() {
       return listLedgerPurchases(userId)

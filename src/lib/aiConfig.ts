@@ -1,18 +1,25 @@
 export type AiProvider = 'groq' | 'openai' | 'custom'
 
+function readEnv(name: string): string {
+  const viteEnv = import.meta.env as Record<string, string | undefined>
+  const fromVite = viteEnv?.[name]
+  if (typeof fromVite === 'string' && fromVite.trim()) return fromVite.trim()
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+  return proc?.env?.[name]?.trim() ?? ''
+}
+
 export function aiConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_AI_BASE_URL?.trim() && import.meta.env.VITE_AI_API_KEY?.trim())
+  return Boolean(readEnv('VITE_AI_BASE_URL') && readEnv('VITE_AI_API_KEY'))
 }
 
 export function aiBaseUrl(): string | null {
-  const raw = import.meta.env.VITE_AI_BASE_URL?.trim()
+  const raw = readEnv('VITE_AI_BASE_URL')
   if (!raw) return null
   return raw.replace(/\/$/, '')
 }
 
 export function aiApiKey(): string | null {
-  const key = import.meta.env.VITE_AI_API_KEY?.trim()
-  return key || null
+  return readEnv('VITE_AI_API_KEY') || null
 }
 
 export function detectAiProvider(baseUrl = aiBaseUrl()): AiProvider {
@@ -25,16 +32,17 @@ export function detectAiProvider(baseUrl = aiBaseUrl()): AiProvider {
 
 /** Text ranking model. Groq free-tier default is openai/gpt-oss-20b. */
 export function chatModel(): string {
-  if (import.meta.env.VITE_AI_MODEL?.trim()) return import.meta.env.VITE_AI_MODEL.trim()
+  const configured = readEnv('VITE_AI_MODEL')
+  if (configured) return configured
   return detectAiProvider() === 'groq' ? 'openai/gpt-oss-20b' : 'gpt-4o-mini'
 }
 
 /** Vision model for photo inventory. Groq free-tier multimodal model. */
 export function visionModel(): string {
-  if (import.meta.env.VITE_AI_VISION_MODEL?.trim()) return import.meta.env.VITE_AI_VISION_MODEL.trim()
-  if (import.meta.env.VITE_AI_MODEL?.trim() && detectAiProvider() !== 'groq') {
-    return import.meta.env.VITE_AI_MODEL.trim()
-  }
+  const vision = readEnv('VITE_AI_VISION_MODEL')
+  if (vision) return vision
+  const text = readEnv('VITE_AI_MODEL')
+  if (text && detectAiProvider() !== 'groq') return text
   return detectAiProvider() === 'groq' ? 'qwen/qwen3.8-27b' : 'gpt-4o-mini'
 }
 
