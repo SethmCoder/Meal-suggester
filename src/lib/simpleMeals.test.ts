@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Meal } from '../data/types'
+import { mealExplanation } from './planner'
 import { simplifyMeal } from './simpleMeals'
 
 function meal(partial: Partial<Meal> & Pick<Meal, 'name'>): Meal {
@@ -27,6 +28,23 @@ describe('simplifyMeal', () => {
     expect(next.ingredients).toEqual([{ name: 'Eggs', quantity: null, unit: null }])
     expect(next.instructions).toEqual([])
     expect(next.sourceUrl).toBeNull()
+    expect(next.prepMinutes).toBeNull()
+    expect(next.cookMinutes).toBeNull()
+  })
+
+  it('does not turn a full recipe that mentions yogurt into a yogurt placeholder', () => {
+    const next = simplifyMeal(
+      meal({
+        name: 'Chicken yogurt stew',
+        ingredients: [
+          { name: 'Chicken breast', quantity: 500, unit: 'g' },
+          { name: 'Yogurt', quantity: 200, unit: 'g' },
+        ],
+        instructions: ['Brown the chicken.', 'Stir in the yogurt and simmer.'],
+      }),
+    )
+    expect(next.simple).toBeFalsy()
+    expect(next.ingredients).toHaveLength(2)
   })
 
   it('leaves a full pasta recipe intact', () => {
@@ -51,5 +69,19 @@ describe('simplifyMeal', () => {
     )
     expect(next.simple).toBe(true)
     expect(next.ingredients[0]?.name).toBe('Eggs')
+  })
+
+  it('explains a simple meal from its ingredient, not from an unrelated request', () => {
+    const yogurt = simplifyMeal(
+      meal({
+        name: 'Yogurt',
+        why: 'Matches your request: chicken, chicken breast. Uses 1 ingredient you already have. 6 ingredients still to buy. 30 minutes. Uses 80 more yogurt tub toward a full pack.',
+        cookMinutes: 30,
+      }),
+    )
+    expect(mealExplanation(yogurt)).toBe(
+      'Yogurt is a simple placeholder for Yogurt. There is no full recipe, and only that ingredient is planned.',
+    )
+    expect(mealExplanation(yogurt)).not.toMatch(/chicken|full pack|30 minutes/i)
   })
 })

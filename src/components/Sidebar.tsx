@@ -1,7 +1,7 @@
 import {
   BookOpen,
   ChefHat,
-  ChevronsLeft,
+  ChevronsRight,
   LogOut,
   Receipt,
   Refrigerator,
@@ -15,72 +15,81 @@ import { AppLogo } from './AppLogo'
 
 interface SidebarProps {
   collapsed: boolean
+  mobileOpen: boolean
   onToggle: () => void
+  onNavigate: () => void
   onLogout: () => void
   onStartTutorial: () => void
+}
+
+function ItemLabel({ collapsed, children }: { collapsed: boolean; children: string }) {
+  return <span className={cn(collapsed && 'md:hidden')}>{children}</span>
 }
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
     'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
-    isActive ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10 hover:text-white',
+    isActive ? 'bg-primary text-white' : 'text-white/80 hover:bg-white/10 hover:text-white',
   )
 
-export function Sidebar({ collapsed, onToggle, onLogout, onStartTutorial }: SidebarProps) {
+export function Sidebar({
+  collapsed,
+  mobileOpen,
+  onToggle,
+  onNavigate,
+  onLogout,
+  onStartTutorial,
+}: SidebarProps) {
   return (
     <aside
       data-tutorial="sidebar"
       className={cn(
-        'fixed bottom-0 right-0 top-20 z-30 flex flex-col border-l border-secondary/40 bg-secondary text-white transition-[width]',
-        collapsed ? 'w-[72px]' : 'w-60',
+        'sidebar-rail fixed bottom-0 right-0 top-16 z-40 flex w-64 flex-col border-l border-white/10 bg-secondary text-white transition-[transform,width] md:top-20',
+        collapsed && 'is-collapsed',
+        mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
       )}
     >
-      <nav className="flex flex-1 flex-col gap-1 p-3">
-        {!collapsed ? null : (
-          <div className="mb-2 flex justify-center py-1">
-            <AppLogo size={52} />
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+        {collapsed ? (
+          <div className="mb-2 hidden justify-center py-1 md:flex">
+            <AppLogo size={40} />
           </div>
-        )}
-        <NavLink to="/app" end className={linkClass} title="Current Meals">
+        ) : null}
+        <NavLink to="/app" end className={linkClass} title="Current Meals" onClick={onNavigate}>
           <ChefHat className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Current Meals</span> : null}
+          <ItemLabel collapsed={collapsed}>Current Meals</ItemLabel>
         </NavLink>
-        <NavLink to="/app/inventory" className={linkClass} title="Food Inventory">
+        <NavLink to="/app/inventory" className={linkClass} title="Food Inventory" onClick={onNavigate}>
           <Refrigerator className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Food Inventory</span> : null}
+          <ItemLabel collapsed={collapsed}>Food Inventory</ItemLabel>
         </NavLink>
-        <NavLink
-          to="/app/shopping"
-          className={({ isActive }) => cn(linkClass({ isActive }), !collapsed && 'ml-3')}
-          title="Shopping List"
-        >
+        <NavLink to="/app/shopping" className={linkClass} title="Shopping List" onClick={onNavigate}>
           <ShoppingCart className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Shopping List</span> : null}
+          <ItemLabel collapsed={collapsed}>Shopping List</ItemLabel>
         </NavLink>
-        <NavLink
-          to="/app/expenses"
-          className={({ isActive }) => cn(linkClass({ isActive }), !collapsed && 'ml-3')}
-          title="Expenses"
-        >
+        <NavLink to="/app/expenses" className={linkClass} title="Expenses" onClick={onNavigate}>
           <Receipt className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Expenses</span> : null}
+          <ItemLabel collapsed={collapsed}>Expenses</ItemLabel>
         </NavLink>
-        <NavLink to="/app/preferences" className={linkClass} title="Food Preferences">
+        <NavLink to="/app/preferences" className={linkClass} title="Food Preferences" onClick={onNavigate}>
           <SlidersHorizontal className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Food Preferences</span> : null}
+          <ItemLabel collapsed={collapsed}>Food Preferences</ItemLabel>
         </NavLink>
         <button
           type="button"
           className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-          onClick={onStartTutorial}
+          onClick={() => {
+            onNavigate()
+            onStartTutorial()
+          }}
           title="Tutorial"
         >
           <BookOpen className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Tutorial</span> : null}
+          <ItemLabel collapsed={collapsed}>Tutorial</ItemLabel>
         </button>
-        <NavLink to="/app/settings" className={linkClass} title="Settings">
+        <NavLink to="/app/settings" className={linkClass} title="Settings" onClick={onNavigate}>
           <Settings className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Settings</span> : null}
+          <ItemLabel collapsed={collapsed}>Settings</ItemLabel>
         </NavLink>
         <button
           type="button"
@@ -89,7 +98,7 @@ export function Sidebar({ collapsed, onToggle, onLogout, onStartTutorial }: Side
           title="Log Out"
         >
           <LogOut className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span>Log Out</span> : null}
+          <ItemLabel collapsed={collapsed}>Log Out</ItemLabel>
         </button>
       </nav>
       <div className="border-t border-white/10 p-3">
@@ -97,11 +106,12 @@ export function Sidebar({ collapsed, onToggle, onLogout, onStartTutorial }: Side
           type="button"
           onClick={onToggle}
           className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-white/85 transition hover:bg-white/10"
-          title="Collapse Sidebar"
-          aria-label="Collapse Sidebar"
+          title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+          aria-label={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         >
-          <ChevronsLeft className={cn('h-5 w-5 transition', collapsed && 'rotate-180')} />
-          {!collapsed ? <span>Collapse Sidebar</span> : null}
+          <ChevronsRight className={cn('h-5 w-5 shrink-0 transition', collapsed && 'md:rotate-180')} />
+          <span className="md:hidden">Collapse Sidebar</span>
+          {!collapsed ? <span className="hidden md:inline">Collapse Sidebar</span> : null}
         </button>
       </div>
     </aside>

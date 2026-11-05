@@ -6,7 +6,7 @@ import { fitsMealSlot, slotScore } from './mealSlots'
 import { openPackageGaps, packageFillBonus } from './packages'
 import { totalMinutes } from './meals'
 import { preferredPublishers } from './recipeSources'
-import { simplifyMeal } from './simpleMeals'
+import { simplePlaceholderFor, simplifyMeal } from './simpleMeals'
 
 function recipeIngredientKeys(recipe: RetrievedRecipe): string[] {
   return recipe.ingredients.map((item) => ingredientKey(item.name)).filter(Boolean)
@@ -48,8 +48,66 @@ function withExplanation(meal: Meal, reasons: string[]): Meal {
   return { ...meal, why: joinReasons(reasons) }
 }
 
+function mealHay(meal: Meal): string {
+  return `${meal.name} ${meal.ingredients.map((item) => item.name).join(' ')}`.toLowerCase()
+}
+
+/** Rewrite planner reasons so they describe the meal that was actually saved. */
+export function alignExplanation(
+  meal: Meal,
+  reasons: string[],
+  foodFocus?: string[],
+): { meal: Meal; reasons: string[] } {
+  if (meal.eatingOut) {
+    const why = 'Eating out. Nothing to cook, and nothing from this meal goes on the shopping list.'
+    return { meal: { ...meal, why }, reasons: [why] }
+  }
+  if (meal.simple) {
+    const item = meal.ingredients.map((ingredient) => ingredient.name).filter(Boolean).join(', ') || meal.name
+    const why = `${meal.name} is a simple placeholder for ${item}. There is no full recipe, and only that ingredient is planned.`
+    return {
+      meal: { ...meal, why, prepMinutes: null, cookMinutes: null, timeIsEstimated: false },
+      reasons: [why],
+    }
+  }
+  const hay = mealHay(meal)
+  const hits = (foodFocus ?? []).filter((term) => hay.includes(term.toLowerCase()))
+  const cleaned = reasons.filter((reason) => !/^Matches your request:/i.test(reason) && !/toward a full pack/i.test(reason))
+  if (hits.length) cleaned.unshift(`Matches your request: ${hits.join(', ')}`)
+  return { meal: withExplanation(meal, cleaned), reasons: cleaned }
+}
+
+/** Explanation shown in the planner. Drops claims that do not match the saved meal. */
+export function mealExplanation(meal: Meal): string | undefined {
+  if (meal.eatingOut || meal.simple) return alignExplanation(meal, [], []).meal.why
+  if (!meal.why) return undefined
+  const hay = mealHay(meal)
+  const kept = meal.why.split(/(?<=[.!?])\s+/).flatMap((sentence) => {
+    const trimmed = sentence.trim()
+    if (!trimmed || /toward a full pack/i.test(trimmed)) return []
+    const request = trimmed.match(/^Matches your request:\s*(.+?)[.!?]?$/i)
+    if (!request) return [trimmed]
+    const terms = request[1]
+      .split(',')
+      .map((term) => term.trim())
+      .filter((term) => term && hay.includes(term.toLowerCase()))
+    return terms.length ? [`Matches your request: ${terms.join(', ')}`] : []
+  })
+  if (!kept.length) return undefined
+  return joinReasons(kept)
+}
+
 function ingredientNames(recipe: RetrievedRecipe): string[] {
   return recipe.ingredients.map((ingredient) => ingredient.name)
+}
+
+/** A one-ingredient placeholder cannot satisfy a request for a different food. */
+function simpleMissesFocus(recipe: RetrievedRecipe, foodFocus: string[] | undefined): boolean {
+  if (!foodFocus?.length) return false
+  const simple = simplePlaceholderFor(recipe)
+  if (!simple) return false
+  const hay = `${simple.name} ${simple.ingredient}`.toLowerCase()
+  return !foodFocus.some((term) => hay.includes(term.toLowerCase()))
 }
 
 function fitsTime(recipe: RetrievedRecipe, maxMinutes: number | null): boolean {
@@ -177,6 +235,7 @@ export function selectSuggestions(input: {
     if (rejected.has(ingredientKey(recipe.name))) return false
     if (allergyConflict(ingredientNames(recipe), recipe.name, input.preferences.allergies)) return false
     if (dietConflict(ingredientNames(recipe), recipe.name, input.preferences.dietary)) return false
+    if (simpleMissesFocus(recipe, input.foodFocus)) return false
     return true
   })
 
@@ -233,7 +292,6 @@ export function selectSuggestions(input: {
         if (overlap > 0) {
           reasons.push(`Reuses ${overlap} ingredient${overlap === 1 ? '' : 's'} from other planned meals`)
         }
-        if (packBonus.reason) reasons.push(packBonus.reason)
         return {
           ...item,
           value: item.value + fit.delta + reuseBonus + packBonus.delta,
@@ -257,12 +315,13 @@ export function selectSuggestions(input: {
     if (cap != null && minutes != null && minutes <= cap) {
       reasons.push(`Fits a ${cap} minute time limit`)
     }
+    const saved = alignExplanation(recipeToMeal(best.recipe), reasons, input.foodFocus)
     suggestions.push({
       day: cell.day,
       slot: cell.slot,
       recipe: best.recipe,
-      meal: withExplanation(recipeToMeal(best.recipe), reasons),
-      reasons,
+      meal: saved.meal,
+      reasons: saved.reasons,
     })
   }
 

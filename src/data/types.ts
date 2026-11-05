@@ -97,6 +97,8 @@ export interface Meal {
   leftoverOf?: string | null
   /** One-step dish shown as ingredients only, without a full recipe. */
   simple?: boolean
+  /** Placeholder for a day you are not cooking. Nothing is shopped or deducted. */
+  eatingOut?: boolean
 }
 
 /** A grocery line added by text, not derived from a planned meal. */

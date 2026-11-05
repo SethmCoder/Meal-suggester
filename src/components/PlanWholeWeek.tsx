@@ -41,6 +41,7 @@ export function PlanWholeWeek({
   const [notes, setNotes] = useState('')
   const [slots, setSlots] = useState<MealSlot[]>(DEFAULT_SLOTS)
   const [emptyOnly, setEmptyOnly] = useState(true)
+  const [eatOutDays, setEatOutDays] = useState<Weekday[]>([])
   const [busy, setBusy] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -97,9 +98,10 @@ export function PlanWholeWeek({
           emptyOnly,
           slots,
           dayThemes: Object.fromEntries(
-            WEEKDAYS.filter((day) => dayThemes[day].trim()).map((day) => [day, dayThemes[day].trim()]),
+            WEEKDAYS.filter((day) => dayThemes[day].trim() && !eatOutDays.includes(day)).map((day) => [day, dayThemes[day].trim()]),
           ) as Partial<Record<Weekday, string>>,
           recurringCaps,
+          eatOutDays,
         },
       })
 
@@ -141,12 +143,12 @@ export function PlanWholeWeek({
             <h2 className="text-lg font-bold text-ink">Plan whole week</h2>
           </div>
           <p className="mt-1 text-sm text-muted">
-            Describe cuisine or vibes per day (optional), then generate Monday–Friday meals from retrieved recipes.
+            Describe cuisine or vibes per day, and mark any day you want to eat out. Eating out is a placeholder: nothing is cooked or added to the shopping list.
           </p>
         </div>
         <Button type="button" onClick={() => void planWeek()} disabled={busy} className="shrink-0">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {busy ? 'Planning…' : 'Plan whole week'}
+          {busy ? 'Planning…' : 'AI Plan whole week'}
         </Button>
       </div>
 
@@ -159,7 +161,18 @@ export function PlanWholeWeek({
               value={dayThemes[day]}
               onChange={(e) => setDayThemes((prev) => ({ ...prev, [day]: e.target.value }))}
               placeholder="e.g. Italian, tacos…"
+              disabled={eatOutDays.includes(day)}
             />
+            <label className="mt-2 flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={eatOutDays.includes(day)}
+                onChange={() =>
+                  setEatOutDays((prev) => (prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day]))
+                }
+              />
+              Eat out
+            </label>
           </div>
         ))}
       </div>
@@ -226,11 +239,11 @@ export function PlanWholeWeek({
               </Button>
             </div>
           </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid items-stretch gap-2 md:grid-cols-2 xl:grid-cols-3">
             {suggestions.map((suggestion) => (
               <div
                 key={`${suggestion.day}-${suggestion.slot}-${suggestion.meal.id}`}
-                className="rounded-xl border border-line bg-canvas/50 p-3"
+                className="flex h-full flex-col rounded-xl border border-line bg-canvas/50 p-3"
               >
                 <div className="flex gap-3">
                   <MealThumb meal={suggestion.meal} size={52} />
@@ -239,12 +252,14 @@ export function PlanWholeWeek({
                       {suggestion.day} {suggestion.slot}
                     </p>
                     <p className="truncate text-sm text-ink">{suggestion.meal.name}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-muted">
-                      {suggestion.meal.why || suggestion.reasons.join(' ')}
+                    <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-muted">
+                      {suggestion.meal.eatingOut
+                        ? 'Eating out placeholder. Nothing to cook or buy.'
+                        : suggestion.meal.why || suggestion.reasons.join(' ')}
                     </p>
                   </div>
                 </div>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-auto flex gap-2 pt-3">
                   <Button type="button" variant="ghost" className="px-3 py-1.5" onClick={() => onEditSuggestion(suggestion)}>
                     Modify
                   </Button>

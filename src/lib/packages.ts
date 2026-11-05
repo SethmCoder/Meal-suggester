@@ -118,7 +118,6 @@ export function packageFillBonus(
 ): { delta: number; reason?: string } {
   if (!openPackages.length) return { delta: 0 }
   let delta = 0
-  const reasons: string[] = []
   for (const open of openPackages) {
     if (open.leftoverNeed <= 0) continue
     let uses = 0
@@ -130,9 +129,8 @@ export function packageFillBonus(
     if (uses <= 0) continue
     const helpful = Math.min(uses, open.leftoverNeed)
     delta += helpful * 6
-    reasons.push(`Uses ${helpful.toFixed(helpful % 1 ? 1 : 0)} more ${open.pack.name.toLowerCase()} toward a full pack`)
   }
-  return { delta, reason: reasons[0] }
+  return { delta }
 }
 
 /** After current meals, how much of each pack is still unused in the bought pack(s). */

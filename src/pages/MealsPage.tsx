@@ -15,6 +15,7 @@ import type { MustEatFood } from '../lib/mustEat'
 import { suggestMeals } from '../lib/suggest'
 import { describeAppliedPattern, inferRecurringCaps, listObservations, recordWeekConstraints } from '../lib/timePatterns'
 import { addWeeks, formatDayHeading, formatWeekRange, mondayOf } from '../lib/dates'
+import { buildShoppingList } from '../lib/ingredients'
 import { downloadMealPlanPdf, emailWeekPlanEnabled, openMealPlanEmail } from '../lib/mealPlanExport'
 import { moveMeal } from '../lib/meals'
 import type { Suggestion } from '../lib/planner'
@@ -143,20 +144,47 @@ export function MealsPage() {
   )
   const patternNote = useMemo(() => (week ? describeAppliedPattern(week.cells) : null), [week])
 
+  function renderMealCell(day: Weekday, slot: MealSlot) {
+    if (!week) return null
+    const cell = week.cells.find((item) => item.day === day && item.slot === slot) as MealCell
+    return (
+      <MealCellCard
+        key={`${day}-${slot}`}
+        cell={cell}
+        inventory={inventory}
+        finishing={finishingKey === `${day}:${slot}`}
+        onAssign={() => setEditor({ day, slot, meal: null })}
+        onEdit={() => setEditor({ day, slot, meal: cell.meal })}
+        onRemove={() => void updateCell(day, slot, null)}
+        onDetails={() => cell.meal && setDetails(cell.meal)}
+        onMove={async (to) => {
+          const cells = moveMeal(week.cells, { day, slot }, to)
+          await saveWeek({ ...week, cells })
+        }}
+        onFinish={() => void finishMeal(day, slot)}
+      />
+    )
+  }
+  const missingIngredients = useMemo(() => {
+    if (!week) return 0
+    const meals = week.cells.flatMap((cell) => (cell.meal ? [cell.meal] : []))
+    return buildShoppingList(meals, inventory, []).filter((row) => row.status !== 'purchased').length
+  }, [week, inventory])
+
   if (!store || !preferences) {
     return <div className="text-muted">{loading ? 'Loading meals…' : 'Session unavailable.'}</div>
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-ink">Current meals</h1>
-          <p className="mt-1 text-sm text-muted">
-            Plan Monday–Friday. {persistenceNote ? persistenceNote : null}
+          <p className="mt-1 max-w-xl text-sm text-muted">
+            Plan Monday–Friday breakfast, lunch, and dinner. {persistenceNote ? persistenceNote : null}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -170,7 +198,7 @@ export function MealsPage() {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <p className="min-w-[180px] text-center text-sm font-semibold text-ink">{formatWeekRange(weekStart)}</p>
+          <p className="min-w-[10.5rem] text-center text-sm font-semibold text-ink">{formatWeekRange(weekStart)}</p>
           <Button
             type="button"
             variant="ghost"
@@ -184,15 +212,12 @@ export function MealsPage() {
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
-
-      {week ? (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="ghost" onClick={() => downloadMealPlanPdf(weekStart, week.cells)}>
-            Download PDF
-          </Button>
-          {profile && emailWeekPlanEnabled(profile.id) ? (
+          {week ? (
+            <Button type="button" variant="ghost" onClick={() => downloadMealPlanPdf(weekStart, week.cells)}>
+              Download PDF
+            </Button>
+          ) : null}
+          {week && profile && emailWeekPlanEnabled(profile.id) ? (
             <Button
               type="button"
               onClick={() => {
@@ -207,7 +232,7 @@ export function MealsPage() {
             </Button>
           ) : null}
         </div>
-      ) : null}
+      </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       {patternNote ? (
@@ -291,8 +316,8 @@ export function MealsPage() {
       {loading || !week ? (
         <EmptyState title="Loading week…" />
       ) : (
-        <div data-tutorial="planner" className="overflow-x-auto">
-          <div className="min-w-[860px]">
+        <div data-tutorial="planner">
+          <div className="hidden lg:block">
             <div className="mb-2 grid grid-cols-[110px_repeat(5,minmax(0,1fr))] gap-2">
               <div />
               {WEEKDAYS.map((day, index) => {
@@ -310,28 +335,30 @@ export function MealsPage() {
                 <div className="flex items-center rounded-xl border border-line bg-surface px-3 text-sm font-semibold text-ink">
                   {SLOT_LABELS[slot]}
                 </div>
-                {WEEKDAYS.map((day) => {
-                  const cell = week.cells.find((item) => item.day === day && item.slot === slot) as MealCell
-                  return (
-                    <MealCellCard
-                      key={`${day}-${slot}`}
-                      cell={cell}
-                      inventory={inventory}
-                      finishing={finishingKey === `${day}:${slot}`}
-                      onAssign={() => setEditor({ day, slot, meal: null })}
-                      onEdit={() => setEditor({ day, slot, meal: cell.meal })}
-                      onRemove={() => void updateCell(day, slot, null)}
-                      onDetails={() => cell.meal && setDetails(cell.meal)}
-                      onMove={async (to) => {
-                        const cells = moveMeal(week.cells, { day, slot }, to)
-                        await saveWeek({ ...week, cells })
-                      }}
-                      onFinish={() => void finishMeal(day, slot)}
-                    />
-                  )
-                })}
+                {WEEKDAYS.map((day) => renderMealCell(day, slot))}
               </div>
             ))}
+          </div>
+          <div className="grid gap-3 lg:hidden">
+            {WEEKDAYS.map((day, index) => {
+              const heading = formatDayHeading(weekStart, index)
+              return (
+                <section key={day} className="soft-shadow rounded-2xl border border-line bg-surface p-3">
+                  <div className="mb-3 rounded-xl bg-secondary px-3 py-2 text-center text-white">
+                    <p className="text-sm font-semibold">{heading.weekday}</p>
+                    <p className="text-xs text-white/75">{heading.date}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {MEAL_SLOTS.map((slot) => (
+                      <div key={slot}>
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{SLOT_LABELS[slot]}</p>
+                        {renderMealCell(day, slot)}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
           </div>
         </div>
       )}
@@ -339,32 +366,34 @@ export function MealsPage() {
       <div className="grid gap-3 md:grid-cols-2">
         <div className="soft-shadow flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-ink">Food inventory</h2>
+            <h2 className="text-lg font-bold text-ink">Food Inventory</h2>
             <p className="mt-1 text-sm text-muted">
               {inventory.length
                 ? `${inventory.length} item${inventory.length === 1 ? '' : 's'} on hand.`
-                : 'Inventory is empty. Scan your fridge to get started.'}
+                : 'Nothing on hand yet. Scan your fridge to get started.'}
             </p>
           </div>
           <Link
             to="/app/inventory"
             className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover"
           >
-            Open inventory
+            Open Inventory
           </Link>
         </div>
         <div className="soft-shadow flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-ink">Shopping list</h2>
+            <h2 className="text-lg font-bold text-ink">Shopping List</h2>
             <p className="mt-1 text-sm text-muted">
-              See missing ingredients and optimize meals so groceries get reused across the week.
+              {missingIngredients
+                ? `${missingIngredients} missing ingredient${missingIngredients === 1 ? '' : 's'} for this week.`
+                : 'No missing ingredients for the meals on this week.'}
             </p>
           </div>
           <Link
             to="/app/shopping"
             className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover"
           >
-            Open shopping list
+            Open Shopping List
           </Link>
         </div>
       </div>

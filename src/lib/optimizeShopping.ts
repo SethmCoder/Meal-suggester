@@ -151,7 +151,7 @@ export async function optimizeWeekForShopping(input: {
 
   // Pass 1: local overlap swaps. Leave finished meals as eaten.
   for (const cell of cells) {
-    if (!cell.meal || cell.finished || cell.meal.isLeftover) continue
+    if (!cell.meal || cell.finished || cell.meal.isLeftover || cell.meal.eatingOut) continue
     const swap = localSwap(cell, recipes, sharedPool, input.preferences, usedIds)
     if (!swap) continue
     cell.meal = swap.meal
@@ -188,7 +188,7 @@ export async function optimizeWeekForShopping(input: {
         if (allergyConflict(names, recipe.name, input.preferences.allergies)) continue
         if (dietConflict(names, recipe.name, input.preferences.dietary)) continue
         const index = cells.findIndex((cell) => cell.day === replacement.day && cell.slot === replacement.slot)
-        if (index < 0 || !cells[index].meal || cells[index].finished || cells[index].meal!.isLeftover) continue
+        if (index < 0 || !cells[index].meal || cells[index].finished || cells[index].meal!.isLeftover || cells[index].meal!.eatingOut) continue
         if (cells[index].meal!.name === recipe.name) continue
         cells[index] = { ...cells[index], meal: recipeToMeal(recipe) }
         swaps += 1

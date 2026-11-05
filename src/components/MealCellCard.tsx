@@ -2,6 +2,7 @@ import { ArrowRightLeft, Check, ExternalLink, Pencil, Trash2, UtensilsCrossed } 
 import type { InventoryItem, Meal, MealCell, MealSlot, Weekday } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { summarizeStock } from '../lib/ingredients'
+import { mealExplanation } from '../lib/planner'
 import { totalMinutes } from '../lib/meals'
 import { cn } from '../lib/cn'
 import { Badge, Button } from './ui'
@@ -30,8 +31,9 @@ export function MealCellCard({
   onFinish,
 }: MealCellCardProps) {
   const meal = cell.meal
-  const stock = meal ? summarizeStock(meal.ingredients, inventory) : null
-  const minutes = meal ? totalMinutes(meal) : null
+  const stock = meal && !meal.eatingOut ? summarizeStock(meal.ingredients, inventory) : null
+  const minutes = meal && !meal.simple && !meal.eatingOut ? totalMinutes(meal) : null
+  const why = meal ? mealExplanation(meal) : undefined
   const finished = Boolean(cell.finished)
 
   return (
@@ -56,15 +58,18 @@ export function MealCellCard({
             <span className="min-w-0 flex-1">
               <span className="line-clamp-2 block text-sm font-semibold text-ink">{meal.name}</span>
               <span className="mt-1 line-clamp-2 block text-xs text-muted">
-                {meal.ingredients
-                  .slice(0, 3)
-                  .map((item) => item.name)
-                  .join(', ') || 'No ingredients listed'}
-                {meal.ingredients.length > 3 ? '…' : ''}
+                {meal.eatingOut
+                  ? 'Not cooking this meal'
+                  : meal.ingredients
+                      .slice(0, 3)
+                      .map((item) => item.name)
+                      .join(', ') || 'No ingredients listed'}
+                {!meal.eatingOut && meal.ingredients.length > 3 ? '…' : ''}
               </span>
             </span>
           </button>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {meal.eatingOut ? <Badge tone="neutral">Eating out</Badge> : null}
             {meal.simple ? <Badge tone="neutral">Simple</Badge> : null}
             {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
             {finished ? <Badge tone="success">Finished</Badge> : null}
@@ -76,9 +81,9 @@ export function MealCellCard({
               <Badge tone="primary">≤ {cell.constraint.maxMinutes} min</Badge>
             ) : null}
           </div>
-          {meal.why ? <p className="mt-2 text-xs leading-relaxed text-muted">{meal.why}</p> : null}
+          {why ? <p className="mt-2 text-xs leading-relaxed text-muted">{why}</p> : null}
           {meal.simple ? <p className="mt-2 text-xs text-muted">Ingredients only — no full recipe.</p> : null}
-          {!meal.simple && meal.sourceUrl ? (
+          {!meal.simple && !meal.eatingOut && meal.sourceUrl ? (
             <a
               href={meal.sourceUrl}
               target="_blank"
@@ -166,8 +171,9 @@ export function MealThumb({ meal, size = 64 }: { meal: Meal; size?: number }) {
 }
 
 export function MealDetails({ meal, inventory }: { meal: Meal; inventory: InventoryItem[] }) {
-  const stock = summarizeStock(meal.ingredients, inventory)
-  const minutes = totalMinutes(meal)
+  const stock = meal.eatingOut ? null : summarizeStock(meal.ingredients, inventory)
+  const minutes = meal.simple || meal.eatingOut ? null : totalMinutes(meal)
+  const why = mealExplanation(meal)
   return (
     <div className="space-y-4">
       <div className="flex gap-4">
@@ -181,11 +187,12 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
                 {meal.timeIsEstimated ? ' (estimated)' : ''}
               </Badge>
             ) : null}
-            <Badge tone={stock.missingCount ? 'accent' : 'success'}>{stock.label}</Badge>
+            {stock ? <Badge tone={stock.missingCount ? 'accent' : 'success'}>{stock.label}</Badge> : null}
+            {meal.eatingOut ? <Badge tone="neutral">Eating out</Badge> : null}
             {meal.simple ? <Badge tone="neutral">Simple</Badge> : null}
             {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
           </div>
-          {!meal.simple && meal.sourceUrl ? (
+          {!meal.simple && !meal.eatingOut && meal.sourceUrl ? (
             <a
               href={meal.sourceUrl}
               target="_blank"
@@ -200,12 +207,13 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
           ) : null}
         </div>
       </div>
-      {meal.why ? (
+      {why ? (
         <div>
           <h4 className="text-sm font-semibold text-ink">Why this meal</h4>
-          <p className="mt-2 text-sm leading-relaxed text-muted">{meal.why}</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted">{why}</p>
         </div>
       ) : null}
+      {meal.eatingOut ? null : (
       <div>
         <h4 className="text-sm font-semibold text-ink">Ingredients</h4>
         <ul className="mt-2 space-y-1 text-sm text-muted">
@@ -219,7 +227,10 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
           {!meal.ingredients.length ? <li>No ingredients listed.</li> : null}
         </ul>
       </div>
-      {meal.simple ? (
+      )}
+      {meal.eatingOut ? (
+        <p className="text-sm text-muted">This day is eating out. It is a placeholder, so there is no recipe and nothing to buy.</p>
+      ) : meal.simple ? (
         <p className="text-sm text-muted">This is a simple meal. Planora keeps the ingredient and skips a full recipe.</p>
       ) : (
         <div>

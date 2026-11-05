@@ -91,9 +91,9 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
         </div>
       </div>
 
-      <form className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={onSubmit}>
-        <div className="sm:col-span-2 lg:col-span-2">
-          <FieldLabel htmlFor="inv-name">Food</FieldLabel>
+      <form className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-7 xl:items-end" onSubmit={onSubmit}>
+        <div className="sm:col-span-2 xl:col-span-2">
+          <FieldLabel htmlFor="inv-name">Name</FieldLabel>
           <TextInput
             id="inv-name"
             value={draft.name}
@@ -102,7 +102,7 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
           />
         </div>
         <div>
-          <FieldLabel htmlFor="inv-qty">Qty</FieldLabel>
+          <FieldLabel htmlFor="inv-qty">Quantity</FieldLabel>
           <TextInput
             id="inv-qty"
             value={draft.quantity}
@@ -137,8 +137,8 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
             ))}
           </TextSelect>
         </div>
-        <div className="sm:col-span-2 lg:col-span-2">
-          <FieldLabel htmlFor="inv-exp">Expires</FieldLabel>
+        <div>
+          <FieldLabel htmlFor="inv-exp">Expiration</FieldLabel>
           <TextInput
             id="inv-exp"
             type="date"
@@ -146,9 +146,9 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
             onChange={(e) => setDraft((d) => ({ ...d, expiresOn: e.target.value }))}
           />
         </div>
-        <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
-          <Button type="submit" disabled={busy}>
-            {editingId ? 'Save changes' : 'Add food'}
+        <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1">
+          <Button type="submit" className="w-full" disabled={busy}>
+            {editingId ? 'Save changes' : 'Add Food'}
           </Button>
           {editingId ? (
             <Button type="button" variant="ghost" onClick={reset}>

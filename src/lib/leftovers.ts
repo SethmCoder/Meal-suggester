@@ -83,15 +83,18 @@ export function chooseLeftoverLunch(input: {
   cells: { day: Weekday; slot: MealSlot; meal: unknown | null }[]
   targets: { day: Weekday; slot: MealSlot }[]
   claimedLunches?: Weekday[]
+  /** Days already marked eating out, which should stay placeholders. */
+  blockedLunches?: Weekday[]
 }): Weekday | null {
   const targetDays = new Set(
     input.targets.filter((target) => target.slot === 'lunch').map((target) => target.day),
   )
   const claimed = new Set(input.claimedLunches ?? [])
+  const blocked = new Set(input.blockedLunches ?? [])
   const start = WEEKDAYS.indexOf(input.dinnerDay)
   for (let index = start + 1; index < WEEKDAYS.length; index += 1) {
     const day = WEEKDAYS[index]
-    if (claimed.has(day)) continue
+    if (claimed.has(day) || blocked.has(day)) continue
     const cell = input.cells.find((item) => item.day === day && item.slot === 'lunch')
     const empty = !cell?.meal
     const targeted = targetDays.has(day)
@@ -126,7 +129,13 @@ export function applyLeftoverPlacements(input: {
   }))
   const claimed: Weekday[] = []
   const dinners = next
-    .filter((suggestion) => suggestion.slot === 'dinner' && !suggestion.meal.isLeftover && isLeftoverFriendly(suggestion.meal))
+    .filter(
+      (suggestion) =>
+        suggestion.slot === 'dinner' &&
+        !suggestion.meal.isLeftover &&
+        !suggestion.meal.eatingOut &&
+        isLeftoverFriendly(suggestion.meal),
+    )
     .sort((a, b) => WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day))
 
   for (const dinner of dinners) {
@@ -135,6 +144,7 @@ export function applyLeftoverPlacements(input: {
       cells: input.cells,
       targets: input.targets,
       claimedLunches: claimed,
+      blockedLunches: next.filter((suggestion) => suggestion.slot === 'lunch' && suggestion.meal.eatingOut).map((suggestion) => suggestion.day),
     })
     if (!day) continue
     claimed.push(day)

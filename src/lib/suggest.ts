@@ -1,15 +1,17 @@
 import type { InventoryItem, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
-import { MEAL_SLOTS, WEEKDAYS } from '../data/types'
+import { MEAL_SLOTS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { aiConfigured, rankWithModel } from './ai'
 import { constraintUpdates, parsePlanRequest, targetCells } from './constraints'
 import { allergyConflict, dietConflict, dietMealDbCategories, dietSearchTerms } from './diet'
 import { ingredientKey } from './ingredients'
+import { eatingOutSuggestions } from './eatingOut'
 import { applyLeftoverPlacements } from './leftovers'
 import { fitsMealSlot } from './mealSlots'
 import { totalMinutes } from './meals'
 import { describeAppliedPattern, PATTERN_NOTE, type RecurringCap } from './timePatterns'
 import {
   fallbackSearchTerms,
+  alignExplanation,
   joinReasons,
   matchesFoodFocus,
   recipeToMeal,
@@ -37,6 +39,8 @@ export interface SuggestOptions {
   mustUse?: string[]
   /** Short caps repeated on the same weekday and slot. */
   recurringCaps?: RecurringCap[]
+  /** Days filled with an Eating out placeholder instead of a cooked recipe. */
+  eatOutDays?: Weekday[]
 }
 
 function searchTerms(
@@ -174,7 +178,32 @@ export async function suggestMeals(input: {
     constraint: { maxMinutes: pattern.maxMinutes, note: PATTERN_NOTE },
   }))
   const savedConstraints = [...constraints, ...patternConstraints]
-  const targets = resolveTargets(request, cells, input.options)
+  const eatOutDays = new Set(input.options?.eatOutDays ?? [])
+  const requestedTargets = resolveTargets(request, cells, input.options)
+  const eatOutTargets = resolveTargets(request, cells, { ...input.options, emptyOnly: false }).filter((cell) =>
+    eatOutDays.has(cell.day),
+  )
+  const targets = requestedTargets.filter((cell) => !eatOutDays.has(cell.day))
+
+  if (!targets.length) {
+    const days = [...new Set(eatOutTargets.map((cell) => WEEKDAY_LABELS[cell.day]))]
+    return {
+      reply: days.length
+        ? `Eating out on ${days.join(', ')}. Those meals are placeholders, with nothing to cook or buy.`
+        : 'No meal slots were selected.',
+      mode: 'match',
+      suggestions: eatingOutSuggestions(eatOutTargets),
+      constraints: savedConstraints,
+      patternNote:
+        describeAppliedPattern(
+          appliedPatterns.map((pattern) => ({
+            day: pattern.day,
+            slot: pattern.slot,
+            constraint: { maxMinutes: pattern.maxMinutes, note: PATTERN_NOTE },
+          })),
+        ) ?? undefined,
+    }
+  }
 
   const boostCategories = [
     ...dietMealDbCategories(input.preferences.dietary),
@@ -268,11 +297,16 @@ export async function suggestMeals(input: {
     })
   }
 
+  suggestions = [...eatingOutSuggestions(eatOutTargets), ...suggestions]
   suggestions = applyLeftoverPlacements({
     suggestions,
     cells: input.week.cells,
     targets,
   })
+  if (eatOutTargets.length) {
+    const days = [...new Set(eatOutTargets.map((cell) => WEEKDAY_LABELS[cell.day]))]
+    reply = `${reply} Eating out on ${days.join(', ')}: those meals are placeholders, with nothing to cook or buy.`
+  }
 
   const filledTargets = targets.filter((cell) =>
     suggestions.some((item) => item.day === cell.day && item.slot === cell.slot),
@@ -388,12 +422,13 @@ function picksToSuggestions(
     if (cap != null && minutes != null && minutes <= cap) {
       reasons.push(`Fits a ${cap} minute time limit`)
     }
+    const saved = alignExplanation({ ...recipeToMeal(recipe), why: joinReasons(reasons) }, reasons, options?.foodFocus)
     suggestions.push({
       day: pick.day,
       slot: pick.slot,
       recipe,
-      meal: { ...recipeToMeal(recipe), why: joinReasons(reasons) },
-      reasons,
+      meal: saved.meal,
+      reasons: saved.reasons,
     })
   }
   return suggestions

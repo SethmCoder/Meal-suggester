@@ -17,7 +17,7 @@ function BootGate({ children }: { children: ReactNode }) {
   const { ready } = useSession()
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-muted">
+      <div className="flex min-h-screen items-center justify-center bg-canvas text-muted">
         Loading Planora…
       </div>
     )

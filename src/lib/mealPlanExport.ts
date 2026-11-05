@@ -1,6 +1,7 @@
 import type { MealCell } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAYS } from '../data/types'
 import { addDays, formatDayHeading, formatWeekRange } from './dates'
+import { mealExplanation } from './planner'
 
 const PAGE_W = 612
 const PAGE_H = 792
@@ -51,7 +52,7 @@ export function mealPlanLines(weekStart: string, cells: MealCell[]): MealPlanLin
       const cell = cells.find((item) => item.day === day && item.slot === slot)
       const meal = cell?.meal
       const label = meal ? meal.name : 'Open'
-      lines.push({ text: `${SLOT_LABELS[slot]}: ${label}${meal?.simple ? ' (simple)' : ''}${meal?.isLeftover ? ' (leftovers)' : ''}`, size: 11 })
+      lines.push({ text: `${SLOT_LABELS[slot]}: ${label}${meal?.eatingOut ? ' (eating out)' : ''}${meal?.simple ? ' (simple)' : ''}${meal?.isLeftover ? ' (leftovers)' : ''}`, size: 11 })
       if (meal?.ingredients.length) {
         const ingredients = meal.ingredients
           .map((item) => item.name)
@@ -59,7 +60,8 @@ export function mealPlanLines(weekStart: string, cells: MealCell[]): MealPlanLin
           .join(', ')
         lines.push({ text: `Ingredients: ${ingredients}`, size: 10 })
       }
-      if (meal?.why) lines.push({ text: meal.why, size: 10, gap: 6 })
+      const why = meal ? mealExplanation(meal) : undefined
+      if (why) lines.push({ text: why, size: 10, gap: 6 })
       else lines.push({ text: '', size: 4, gap: 4 })
     }
     lines.push({ text: '', size: 8 })

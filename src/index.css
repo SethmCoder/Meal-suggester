@@ -29,9 +29,35 @@ body,
 
 body {
   margin: 0;
-  background: #ffffff;
+  background: #f4f7fb;
   color: var(--color-ink);
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (max-width: 767px) {
+  main {
+    --sidebar-offset: 0px;
+  }
+}
+
+@media (min-width: 768px) {
+  aside.sidebar-rail {
+    width: 15rem;
+  }
+
+  aside.sidebar-rail.is-collapsed {
+    width: 4.5rem;
+  }
+
+  main.main-expanded {
+    margin-right: 15rem;
+    --sidebar-offset: 15rem;
+  }
+
+  main.main-collapsed {
+    margin-right: 4.5rem;
+    --sidebar-offset: 4.5rem;
+  }
 }
 
 button,

@@ -6,13 +6,13 @@ interface SimpleDish {
 }
 
 const KNOWN: { pattern: RegExp; dish: SimpleDish }[] = [
-  { pattern: /\bscrambled eggs?\b/i, dish: { name: 'Scrambled eggs', ingredient: 'Eggs' } },
-  { pattern: /\bfried eggs?\b/i, dish: { name: 'Fried eggs', ingredient: 'Eggs' } },
-  { pattern: /\b(hard[ -]?boiled|soft[ -]?boiled|boiled|poached) eggs?\b/i, dish: { name: 'Boiled eggs', ingredient: 'Eggs' } },
+  { pattern: /^scrambled eggs?$/i, dish: { name: 'Scrambled eggs', ingredient: 'Eggs' } },
+  { pattern: /^fried eggs?$/i, dish: { name: 'Fried eggs', ingredient: 'Eggs' } },
+  { pattern: /^(hard[ -]?boiled|soft[ -]?boiled|boiled|poached) eggs?$/i, dish: { name: 'Boiled eggs', ingredient: 'Eggs' } },
   { pattern: /^(buttered |plain )?toast$/i, dish: { name: 'Toast', ingredient: 'Bread' } },
-  { pattern: /\b(oatmeal|porridge)\b/i, dish: { name: 'Oatmeal', ingredient: 'Oats' } },
-  { pattern: /\b(yogurt|yoghurt)\b/i, dish: { name: 'Yogurt', ingredient: 'Yogurt' } },
-  { pattern: /\bcereal\b/i, dish: { name: 'Cereal', ingredient: 'Cereal' } },
+  { pattern: /^(hot )?(oatmeal|porridge)$/i, dish: { name: 'Oatmeal', ingredient: 'Oats' } },
+  { pattern: /^(plain |greek |vanilla |fruit )?(yogurt|yoghurt)$/i, dish: { name: 'Yogurt', ingredient: 'Yogurt' } },
+  { pattern: /^(breakfast )?cereal$/i, dish: { name: 'Cereal', ingredient: 'Cereal' } },
 ]
 
 const PANTRY_NOISE = /\b(salt|pepper|oil|butter|water|spray)\b/i
@@ -47,6 +47,9 @@ function placeholder(meal: Meal, dish: SimpleDish): Meal {
     name: dish.name,
     ingredients: [{ name: dish.ingredient, quantity: null, unit: null }],
     instructions: [],
+    prepMinutes: null,
+    cookMinutes: null,
+    timeIsEstimated: false,
     imageUrl: null,
     sourceName: null,
     sourceUrl: null,
@@ -56,8 +59,24 @@ function placeholder(meal: Meal, dish: SimpleDish): Meal {
   }
 }
 
+/** The simple dish a recipe would collapse to, before it is saved. */
+export function simplePlaceholderFor(input: {
+  name: string
+  ingredients: Ingredient[]
+  instructions: string[]
+}): SimpleDish | null {
+  const known = knownDish(input.name)
+  if (known) return known
+  if (isStirOnly(input)) {
+    const main = mainFoods(input.ingredients)[0]
+    return { name: input.name.trim(), ingredient: main?.name.trim() || 'Eggs' }
+  }
+  return null
+}
+
 /** Turn a one-step dish into an ingredient placeholder. Other meals pass through. */
 export function simplifyMeal(meal: Meal): Meal {
+  if (meal.eatingOut) return meal
   const known = knownDish(meal.name)
   if (known) return placeholder(meal, known)
   if (isStirOnly(meal)) {
