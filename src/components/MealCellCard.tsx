@@ -2,7 +2,6 @@ import { ArrowRightLeft, Check, ExternalLink, Pencil, Trash2, UtensilsCrossed } 
 import type { InventoryItem, Meal, MealCell, MealSlot, Weekday } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { summarizeStock } from '../lib/ingredients'
-import { mealExplanation } from '../lib/planner'
 import { totalMinutes } from '../lib/meals'
 import { cn } from '../lib/cn'
 import { Badge, Button } from './ui'
@@ -33,13 +32,12 @@ export function MealCellCard({
   const meal = cell.meal
   const stock = meal && !meal.eatingOut ? summarizeStock(meal.ingredients, inventory) : null
   const minutes = meal && !meal.simple && !meal.eatingOut ? totalMinutes(meal) : null
-  const why = meal ? mealExplanation(meal) : undefined
   const finished = Boolean(cell.finished)
 
   return (
     <div
       className={cn(
-        'soft-shadow flex min-h-[140px] flex-col rounded-2xl border bg-surface p-3',
+        'soft-shadow flex flex-col rounded-2xl border bg-surface p-2.5',
         finished ? 'border-success/40 bg-success/5' : 'border-line',
       )}
     >
@@ -53,11 +51,11 @@ export function MealCellCard({
         </button>
       ) : (
         <>
-          <button type="button" onClick={onDetails} className="flex gap-2.5 text-left">
-            <MealThumb meal={meal} size={52} />
+          <button type="button" onClick={onDetails} className="flex gap-2 text-left">
+            <MealThumb meal={meal} size={40} />
             <span className="min-w-0 flex-1">
-              <span className="line-clamp-2 block text-sm font-semibold text-ink">{meal.name}</span>
-              <span className="mt-1 line-clamp-2 block text-xs text-muted">
+              <span className="line-clamp-2 block text-sm font-semibold leading-tight text-ink">{meal.name}</span>
+              <span className="mt-0.5 line-clamp-1 block text-xs text-muted">
                 {meal.eatingOut
                   ? 'Not cooking this meal'
                   : meal.ingredients
@@ -68,7 +66,7 @@ export function MealCellCard({
               </span>
             </span>
           </button>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-1.5 flex flex-wrap gap-1">
             {meal.eatingOut ? <Badge tone="neutral">Eating out</Badge> : null}
             {meal.simple ? <Badge tone="neutral">Simple</Badge> : null}
             {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
@@ -81,21 +79,7 @@ export function MealCellCard({
               <Badge tone="primary">≤ {cell.constraint.maxMinutes} min</Badge>
             ) : null}
           </div>
-          {why ? <p className="mt-2 text-xs leading-relaxed text-muted">{why}</p> : null}
-          {meal.simple ? <p className="mt-2 text-xs text-muted">Ingredients only — no full recipe.</p> : null}
-          {!meal.simple && !meal.eatingOut && meal.sourceUrl ? (
-            <a
-              href={meal.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              {meal.sourceName ? `Recipe · ${meal.sourceName}` : 'Open recipe'}
-            </a>
-          ) : null}
-          <div className="mt-auto flex flex-wrap items-center gap-1 pt-3">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
             {!finished ? (
               <Button
                 type="button"
@@ -173,7 +157,6 @@ export function MealThumb({ meal, size = 64 }: { meal: Meal; size?: number }) {
 export function MealDetails({ meal, inventory }: { meal: Meal; inventory: InventoryItem[] }) {
   const stock = meal.eatingOut ? null : summarizeStock(meal.ingredients, inventory)
   const minutes = meal.simple || meal.eatingOut ? null : totalMinutes(meal)
-  const why = mealExplanation(meal)
   return (
     <div className="space-y-4">
       <div className="flex gap-4">
@@ -207,12 +190,6 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
           ) : null}
         </div>
       </div>
-      {why ? (
-        <div>
-          <h4 className="text-sm font-semibold text-ink">Why this meal</h4>
-          <p className="mt-2 text-sm leading-relaxed text-muted">{why}</p>
-        </div>
-      ) : null}
       {meal.eatingOut ? null : (
       <div>
         <h4 className="text-sm font-semibold text-ink">Ingredients</h4>
