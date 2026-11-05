@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { RunningLowPanel } from '../components/RunningLowPanel'
+import { ShoppingCoach } from '../components/ShoppingCoach'
 import { ShoppingPanel } from '../components/ShoppingPanel'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
@@ -9,7 +10,9 @@ import type { InventoryItem, MealFeedback, Preferences, WeekPlan } from '../data
 import { addWeeks, formatWeekRange, mondayOf } from '../lib/dates'
 import { estimatePurchaseCost } from '../lib/finance'
 import { buildShoppingList, ingredientKey } from '../lib/ingredients'
+import { downloadShoppingList, loadOfflineShopping } from '../lib/offlineShopping'
 import { optimizeWeekForShopping } from '../lib/optimizeShopping'
+import { estimateIngredientPrices, requestDeviceLocation, type IngredientPrice, type NearbyStore } from '../lib/openPrices'
 import {
   detectRunningLow,
   loadCachedRunningLow,
@@ -34,6 +37,11 @@ export function ShoppingListPage() {
   const [runningLow, setRunningLow] = useState<RunningLowItem[]>([])
   const [runningLowBusy, setRunningLowBusy] = useState(false)
   const [runningLowMessage, setRunningLowMessage] = useState<string | null>(null)
+  const [prices, setPrices] = useState<Record<string, IngredientPrice>>({})
+  const [stores, setStores] = useState<NearbyStore[]>([])
+  const [priceBusy, setPriceBusy] = useState(false)
+  const [priceNote, setPriceNote] = useState<string | null>(null)
+  const [offlineSavedAt, setOfflineSavedAt] = useState<string | null>(() => loadOfflineShopping()?.savedAt ?? null)
 
   const reload = useCallback(
     async (start: string) => {
@@ -143,8 +151,8 @@ export function ShoppingListPage() {
     setRunningLow(detectRunningLow(plannedMeals, inventory).filter((item) => !dismissed.has(item.key)))
   }, [profile, preferences, loading, week, weekStart, plannedMeals, inventory])
 
-  async function optimize() {
-    if (!store || !week || !preferences || optimizeBusy) return
+  async function optimize(goal?: string) {
+    if (!store || !week || !preferences || optimizeBusy) return 'Plan meals before asking to shorten the list.'
     setOptimizeBusy(true)
     setOptimizeMessage(null)
     setError(null)
@@ -154,16 +162,68 @@ export function ShoppingListPage() {
         inventory,
         preferences,
         feedback,
+        goal,
       })
       setWeek(result.week)
       await store.saveWeek(result.week)
       setOptimizeMessage(result.reply)
+      return result.reply
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not optimize meals for shopping.')
+      const message = err instanceof Error ? err.message : 'Could not optimize meals for shopping.'
+      setError(message)
+      throw err
     } finally {
       setOptimizeBusy(false)
     }
   }
+
+  async function loadNearbyPrices() {
+    const targets = shoppingRows.filter((row) => row.status !== 'purchased')
+    if (!targets.length) {
+      setPriceNote('Nothing left to price.')
+      return
+    }
+    setPriceBusy(true)
+    setPriceNote(null)
+    setError(null)
+    try {
+      const location = await requestDeviceLocation()
+      const quote = await estimateIngredientPrices(
+        targets.map((row) => ({ key: row.key, name: row.name })),
+        location.lat,
+        location.lon,
+      )
+      setPrices(quote.byKey)
+      setStores(quote.stores)
+      const priced = Object.values(quote.byKey).filter((item) => item.averageUsd != null).length
+      setPriceNote(
+        quote.stores.length
+          ? `Compared ${quote.stores.length} nearby stores with Open Prices data. ${priced} ingredient${priced === 1 ? '' : 's'} have an average.`
+          : `No priced grocery stores were found within ${quote.radiusKm} km, so averages use US community prices when a match exists.`,
+      )
+    } catch (err) {
+      setPriceNote(err instanceof Error ? err.message : 'Could not load nearby prices.')
+    } finally {
+      setPriceBusy(false)
+    }
+  }
+
+  function saveOffline() {
+    downloadShoppingList({
+      savedAt: new Date().toISOString(),
+      weekLabel: formatWeekRange(weekStart),
+      rows: shoppingRows,
+      prices: Object.fromEntries(shoppingRows.map((row) => [row.key, prices[row.key]?.averageUsd ?? null])),
+      storeNames: stores.map((storeItem) => `${storeItem.name}${storeItem.city ? ` (${storeItem.city})` : ''}`),
+    })
+    setOfflineSavedAt(new Date().toISOString())
+  }
+
+  const pricedTotal = shoppingRows.reduce((sum, row) => {
+    if (row.status === 'purchased') return sum
+    return sum + (prices[row.key]?.averageUsd ?? 0)
+  }, 0)
+  const pricedCount = shoppingRows.filter((row) => row.status !== 'purchased' && prices[row.key]?.averageUsd != null).length
 
   if (!store) return <p className="text-muted">Session unavailable.</p>
 
@@ -238,8 +298,56 @@ export function ShoppingListPage() {
         <EmptyState title="Loading shopping list…" />
       ) : (
         <>
+          <section className="soft-shadow rounded-2xl border border-line bg-surface p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-ink">Prices and offline list</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Download a checklist you can open with no connection. Prices are community averages from{' '}
+                  <a
+                    href="https://prices.openfoodfacts.org/countries/United%20States"
+                    className="font-semibold text-primary hover:underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open Food Facts Open Prices
+                  </a>
+                  , using grocery stores nearest to you when location is allowed.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="ghost" onClick={saveOffline} disabled={!shoppingRows.length}>
+                  Download list
+                </Button>
+                <Button type="button" onClick={() => void loadNearbyPrices()} disabled={priceBusy || !shoppingRows.length}>
+                  {priceBusy ? 'Finding stores…' : 'Estimate prices near me'}
+                </Button>
+              </div>
+            </div>
+            {pricedCount ? (
+              <p className="mt-3 text-sm font-semibold text-ink">
+                About ${pricedTotal.toFixed(2)} across {pricedCount} priced ingredient{pricedCount === 1 ? '' : 's'}
+              </p>
+            ) : null}
+            {priceNote ? <p className="mt-2 text-sm text-ink">{priceNote}</p> : null}
+            {offlineSavedAt ? (
+              <p className="mt-2 text-xs text-muted">Last offline copy saved {new Date(offlineSavedAt).toLocaleString()}.</p>
+            ) : null}
+            {stores.length ? (
+              <ul className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
+                {stores.map((item) => (
+                  <li key={item.id} className="rounded-full border border-line px-2 py-1">
+                    {item.name}
+                    {item.city ? ` · ${item.city}` : ''} · {item.distanceKm} km
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+          <ShoppingCoach busy={optimizeBusy} onAsk={(goal) => optimize(goal)} />
           <ShoppingPanel
             rows={shoppingRows}
+            prices={prices}
             onTogglePurchased={async (key, purchasedFlag) => {
               await store.setPurchased(weekStart, key, purchasedFlag)
               setPurchased(await store.listPurchased(weekStart))

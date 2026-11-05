@@ -109,6 +109,7 @@ export async function optimizeWeekForShopping(input: {
   inventory: InventoryItem[]
   preferences: Preferences
   feedback: MealFeedback[]
+  goal?: string
 }): Promise<{ week: WeekPlan; reply: string; swaps: number; beforeCount: number; afterCount: number }> {
   const filled = input.week.cells.filter((cell) => cell.meal)
   const beforeRows = buildShoppingList(
@@ -146,10 +147,11 @@ export async function optimizeWeekForShopping(input: {
   let swaps = 0
   const usedIds = new Set<string>()
   let sharedPool = collectSharedPool(cells, input.inventory)
+  let modelReply = ''
 
-  // Pass 1: local overlap swaps.
+  // Pass 1: local overlap swaps. Leave finished meals as eaten.
   for (const cell of cells) {
-    if (!cell.meal) continue
+    if (!cell.meal || cell.finished || cell.meal.isLeftover) continue
     const swap = localSwap(cell, recipes, sharedPool, input.preferences, usedIds)
     if (!swap) continue
     cell.meal = swap.meal
@@ -173,7 +175,9 @@ export async function optimizeWeekForShopping(input: {
       preferences: input.preferences,
       inventoryNames: input.inventory.map((item) => item.name),
       shoppingItemCount: beforeCount,
+      goal: input.goal,
     })
+    if (ranked?.reply) modelReply = ranked.reply
     if (ranked?.replacements?.length) {
       const byId = new Map(recipes.map((recipe) => [recipe.providerId, recipe]))
       for (const replacement of ranked.replacements) {
@@ -184,7 +188,7 @@ export async function optimizeWeekForShopping(input: {
         if (allergyConflict(names, recipe.name, input.preferences.allergies)) continue
         if (dietConflict(names, recipe.name, input.preferences.dietary)) continue
         const index = cells.findIndex((cell) => cell.day === replacement.day && cell.slot === replacement.slot)
-        if (index < 0 || !cells[index].meal) continue
+        if (index < 0 || !cells[index].meal || cells[index].finished || cells[index].meal!.isLeftover) continue
         if (cells[index].meal!.name === recipe.name) continue
         cells[index] = { ...cells[index], meal: recipeToMeal(recipe) }
         swaps += 1
@@ -199,7 +203,7 @@ export async function optimizeWeekForShopping(input: {
   ).filter((row) => row.status !== 'purchased')
   const afterCount = afterRows.length
   const week = { ...input.week, cells }
-  const reply = shoppingScore(beforeCount, afterCount, swaps)
+  const reply = [shoppingScore(beforeCount, afterCount, swaps), modelReply].filter(Boolean).join(' ')
 
   return { week, reply, swaps, beforeCount, afterCount }
 }

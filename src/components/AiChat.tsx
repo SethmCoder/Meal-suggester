@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { MessageCircle, X } from 'lucide-react'
 import type { InventoryItem, Meal, MealFeedback, Preferences, WeekPlan } from '../data/types'
+import type { RecurringCap } from '../lib/timePatterns'
 import { suggestMeals } from '../lib/suggest'
 import type { Suggestion } from '../lib/planner'
 import { MealThumb } from './MealCellCard'
@@ -23,6 +24,7 @@ interface AiChatProps {
   onAccept: (suggestion: Suggestion) => Promise<void>
   onReject: (suggestion: Suggestion) => Promise<void>
   onEditSuggestion: (suggestion: Suggestion) => void
+  recurringCaps?: RecurringCap[]
 }
 
 export function AiChat({
@@ -34,6 +36,7 @@ export function AiChat({
   onAccept,
   onReject,
   onEditSuggestion,
+  recurringCaps,
 }: AiChatProps) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
@@ -42,7 +45,7 @@ export function AiChat({
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'Ask me to fill a meal or the whole week. I use your inventory, allergies, and time limits, and only suggest recipes that were actually retrieved.',
+      text: 'Ask me to fill a meal or the whole week. Tell me about freezer food or anything expiring and I will look for retrieved recipes that use it. I only suggest recipes that were actually retrieved.',
     },
   ])
 
@@ -54,14 +57,21 @@ export function AiChat({
     setBusy(true)
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', text: message }])
     try {
-      const result = await suggestMeals({ message, inventory, preferences, week, feedback })
+      const result = await suggestMeals({
+        message,
+        inventory,
+        preferences,
+        week,
+        feedback,
+        options: { recurringCaps },
+      })
       if (result.constraints.length) await onApplyConstraints(result.constraints)
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: 'assistant',
-          text: result.reply,
+          text: [result.reply, result.patternNote].filter(Boolean).join(' '),
           suggestions: result.suggestions,
           mode: result.mode,
         },
@@ -177,7 +187,7 @@ function SuggestionCard({
           <p className="font-semibold text-ink">
             {suggestion.day} {suggestion.slot}: {meal.name}
           </p>
-          <p className="mt-1 text-xs text-muted">{suggestion.reasons.join(' · ')}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">{suggestion.meal.why || suggestion.reasons.join(' ')}</p>
           {meal.sourceUrl ? (
             <a
               href={meal.sourceUrl}

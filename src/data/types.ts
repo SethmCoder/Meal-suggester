@@ -86,6 +86,12 @@ export interface Meal {
   sourceUrl: string | null
   sourceRetrieved: boolean
   sourcePageFetched: boolean
+  /** Short paragraph explaining why this meal was planned. */
+  why?: string
+  /** True when this meal is leftovers of an earlier cook. */
+  isLeftover?: boolean
+  /** Id of the original cook. Shopping ignores a second purchase when that meal is also planned. */
+  leftoverOf?: string | null
 }
 
 export interface TimeConstraint {
@@ -129,6 +135,25 @@ export interface Consumption {
     inventoryBefore: number
     inventoryAfter: number
   }[]
+  /** Optional note, for example when leftovers do not deduct inventory again. */
+  note?: string
+}
+
+export interface ReceiptLineItem {
+  name: string
+  priceUsd: number | null
+}
+
+/** A grocery receipt. subtotalUsd is always the pre-tax amount. */
+export interface Receipt {
+  id: string
+  purchasedAt: string
+  weekStart: string
+  subtotalUsd: number
+  taxUsd: number | null
+  merchant: string | null
+  imageDataUrl: string | null
+  lineItems: ReceiptLineItem[]
 }
 
 export interface WeekPlan {

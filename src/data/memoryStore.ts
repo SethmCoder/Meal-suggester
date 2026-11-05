@@ -152,6 +152,7 @@ export function createDemoSession(): { profile: Profile; store: DataStore } {
         weekStart: entry.weekStart,
         finishedAt: entry.finishedAt ?? new Date().toISOString(),
         items: entry.items,
+        note: entry.note,
       }
       blob.consumptions.push(row)
       return row

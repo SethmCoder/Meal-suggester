@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CalendarRange, Loader2, Sparkles } from 'lucide-react'
 import type { InventoryItem, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
+import type { RecurringCap } from '../lib/timePatterns'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { suggestMeals } from '../lib/suggest'
 import type { Suggestion } from '../lib/planner'
@@ -15,6 +16,7 @@ interface PlanWholeWeekProps {
   onApplyConstraints: (constraints: Awaited<ReturnType<typeof suggestMeals>>['constraints']) => Promise<void>
   onApplyAll: (suggestions: Suggestion[]) => Promise<void>
   onEditSuggestion: (suggestion: Suggestion) => void
+  recurringCaps?: RecurringCap[]
 }
 
 const DEFAULT_SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner']
@@ -27,6 +29,7 @@ export function PlanWholeWeek({
   onApplyConstraints,
   onApplyAll,
   onEditSuggestion,
+  recurringCaps,
 }: PlanWholeWeekProps) {
   const [dayThemes, setDayThemes] = useState<Record<Weekday, string>>({
     monday: '',
@@ -96,6 +99,7 @@ export function PlanWholeWeek({
           dayThemes: Object.fromEntries(
             WEEKDAYS.filter((day) => dayThemes[day].trim()).map((day) => [day, dayThemes[day].trim()]),
           ) as Partial<Record<Weekday, string>>,
+          recurringCaps,
         },
       })
 
@@ -235,7 +239,9 @@ export function PlanWholeWeek({
                       {suggestion.day} {suggestion.slot}
                     </p>
                     <p className="truncate text-sm text-ink">{suggestion.meal.name}</p>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted">{suggestion.reasons.join(' · ')}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">
+                      {suggestion.meal.why || suggestion.reasons.join(' ')}
+                    </p>
                   </div>
                 </div>
                 <div className="mt-2 flex gap-2">

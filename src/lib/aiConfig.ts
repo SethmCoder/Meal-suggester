@@ -47,7 +47,7 @@ export function extractJsonObject(text: string): string | null {
     .trim()
 
   // Prefer an object that includes picks/replacements/items.
-  const preferred = cleaned.match(/\{[\s\S]*"(?:picks|replacements|items)"[\s\S]*\}/)
+  const preferred = cleaned.match(/\{[\s\S]*"(?:picks|replacements|items|lineItems|subtotalUsd)"[\s\S]*\}/)
   if (preferred?.[0]) {
     const candidate = preferred[0]
     try {

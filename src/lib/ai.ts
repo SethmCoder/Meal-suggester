@@ -38,6 +38,8 @@ export async function rankWithModel(input: {
   inventoryNames: string[]
   dayThemes?: Partial<Record<Weekday, string>>
   foodFocus?: string[]
+  mustUseFoods?: string[]
+  timeCaps?: { day: Weekday; slot: MealSlot; maxMinutes: number }[]
 }): Promise<{ reply: string; picks: ModelPick[] } | null> {
   const base = aiBaseUrl()
   const key = aiApiKey()
@@ -62,13 +64,17 @@ export async function rankWithModel(input: {
     'Return exactly one pick for every listed target cell — no more, no fewer when the catalog allows.',
     'Only use day/slot pairs present in targets. Do not invent extra days.',
     'Never assign dessert/sweets to breakfast, lunch, or dinner.',
-    'If foodFocus is provided (for example egg, scrambled), prefer catalog recipes that match those words in the name or ingredients.',
+    'If foodFocus or mustUseFoods are provided, prefer catalog recipes that include those foods in the name or ingredients.',
+    'mustUseFoods are items the cook already owns and needs to eat soon (freezer food or food that is expiring). Use them before suggesting meals that ignore them.',
+    'Do not claim recipes came from Instagram. Only use the retrieved catalog.',
     'For breakfast targets, prefer egg dishes, oatmeal, pancakes, toast, and similar breakfast foods when requested or appropriate.',
     'When dayThemes are provided, match them as well as the catalog allows.',
     'Prefer distinct recipes; reuse only if the catalog is smaller than the number of targets.',
     'Reuse shared ingredients across meals when useful for shopping.',
     'Optimize for store package sizes: if one meal uses 1 egg, prefer later meals that use more eggs so a dozen is mostly consumed instead of wasted.',
     'Same idea for milk, chicken packs, rice bags, onions, etc. Fill opened packages across the week.',
+    'timeCaps are hard limits on prep plus cook minutes. Never pick a catalog recipe whose minutes exceed the cap for that day and slot.',
+    'Each why must be one or two sentences explaining the choice: inventory, time limit, cuisine, diet, package use, or a similar reason.',
     'Return JSON only: {"reply": string, "picks": [{"providerId": string, "day": string, "slot": string, "why": string}]}.',
   ].join(' ')
 
@@ -82,6 +88,7 @@ export async function rankWithModel(input: {
         content: JSON.stringify({
           request: input.message,
           foodFocus: input.foodFocus ?? [],
+          mustUseFoods: input.mustUseFoods ?? [],
           targets: input.targets,
           targetCount,
           dayThemes: input.dayThemes ?? {},
@@ -95,6 +102,7 @@ export async function rankWithModel(input: {
           instructions: input.preferences.instructions,
           preferredRecipeSites: input.preferences.recipeSites,
           inventory: input.inventoryNames,
+          timeCaps: input.timeCaps ?? [],
           catalog,
         }),
       },
@@ -182,6 +190,7 @@ export async function optimizeWeekWithModel(input: {
   preferences: Preferences
   inventoryNames: string[]
   shoppingItemCount: number
+  goal?: string
 }): Promise<{ reply: string; replacements: ModelPick[] } | null> {
   const base = aiBaseUrl()
   const key = aiApiKey()
@@ -210,13 +219,14 @@ export async function optimizeWeekWithModel(input: {
           {
             role: 'system',
             content:
-              'You optimize an existing weekday meal plan to shorten the grocery list. Replace meals only with recipes from the catalog. Prefer swaps that reuse ingredients already used this week or present in inventory. Keep allergies and dietary restrictions strict. Do not assign desserts to breakfast, lunch, or dinner. Keep slot appropriateness (breakfast-like for breakfast). Only suggest a replacement when it clearly improves ingredient overlap. Return JSON only: {"reply": string, "replacements": [{"providerId": string, "day": string, "slot": string, "why": string}]}.',
+              'You optimize an existing weekday meal plan to shorten the grocery list and lower how many ingredients must be bought. Replace meals only with recipes from the catalog. Prefer swaps that reuse ingredients already used this week or present in inventory. If the shopper wrote a goal, follow it when the catalog allows. Keep allergies and dietary restrictions strict. Do not assign desserts to breakfast, lunch, or dinner. Keep slot appropriateness (breakfast-like for breakfast). Only suggest a replacement when it clearly reduces new ingredients. Return JSON only: {"reply": string, "replacements": [{"providerId": string, "day": string, "slot": string, "why": string}]}.',
           },
           {
             role: 'user',
             content: JSON.stringify({
               currentPlan: input.weekCells,
               shoppingItemCount: input.shoppingItemCount,
+              shopperGoal: input.goal ?? '',
               allergies: input.preferences.allergies,
               dietary: input.preferences.dietary,
               disliked: input.preferences.disliked,

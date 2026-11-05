@@ -1,15 +1,17 @@
 import type { InventoryItem } from '../data/types'
 import { createId } from '../lib/id'
 import { formatQuantity, guessCategory, type ShoppingRow } from '../lib/ingredients'
+import type { IngredientPrice } from '../lib/openPrices'
 import { Badge, Button, EmptyState } from './ui'
 
 interface ShoppingPanelProps {
   rows: ShoppingRow[]
+  prices?: Record<string, IngredientPrice | undefined>
   onTogglePurchased: (key: string, purchased: boolean) => Promise<void>
   onAddToInventory: (item: InventoryItem) => Promise<void>
 }
 
-export function ShoppingPanel({ rows, onTogglePurchased, onAddToInventory }: ShoppingPanelProps) {
+export function ShoppingPanel({ rows, prices, onTogglePurchased, onAddToInventory }: ShoppingPanelProps) {
   return (
     <div data-tutorial="shopping" className="soft-shadow rounded-2xl border border-line bg-surface p-4 md:p-5">
       <h2 className="text-lg font-bold text-ink">What to buy</h2>
@@ -34,6 +36,7 @@ export function ShoppingPanel({ rows, onTogglePurchased, onAddToInventory }: Sho
                   {formatQuantity(row.quantity, row.unit)}
                   {row.mealNames.length ? ` · for ${row.mealNames.join(', ')}` : ''}
                 </p>
+                <PriceTag price={prices?.[row.key]} />
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -67,5 +70,19 @@ export function ShoppingPanel({ rows, onTogglePurchased, onAddToInventory }: Sho
         )}
       </div>
     </div>
+  )
+}
+
+function PriceTag({ price }: { price?: IngredientPrice }) {
+  if (!price || price.averageUsd == null) return null
+  const where = price.scope === 'nearby' ? 'nearby stores' : 'US community prices'
+  return (
+    <p className="mt-1 text-sm font-semibold text-primary">
+      ${price.averageUsd.toFixed(2)} avg
+      <span className="ml-1 font-normal text-muted">
+        · {price.sampleCount} price{price.sampleCount === 1 ? '' : 's'} from {where}
+        {price.exampleProduct ? ` · e.g. ${price.exampleProduct}` : ''}
+      </span>
+    </p>
   )
 }

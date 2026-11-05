@@ -335,6 +335,7 @@ export function createSupabaseStore(userId: string): DataStore {
         weekStart: entry.weekStart,
         finishedAt: entry.finishedAt ?? new Date().toISOString(),
         items: entry.items,
+        note: entry.note,
       }
       return addLedgerConsumption(userId, row)
     },

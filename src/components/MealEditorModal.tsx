@@ -73,6 +73,9 @@ export function MealEditorModal({ title, initial, onClose, onSave }: MealEditorM
         sourceUrl: draft.sourceUrl.trim() || null,
         sourceRetrieved: initial?.sourceRetrieved ?? false,
         sourcePageFetched: initial?.sourcePageFetched ?? false,
+        why: initial?.why,
+        isLeftover: initial?.isLeftover,
+        leftoverOf: initial?.leftoverOf,
       })
       onClose()
     } catch (err) {

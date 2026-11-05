@@ -237,6 +237,7 @@ function createLocalStore(userId: string): DataStore {
         weekStart: entry.weekStart,
         finishedAt: entry.finishedAt ?? new Date().toISOString(),
         items: entry.items,
+        note: entry.note,
       }
       blob.consumptions.push(row)
       save(db, blob)

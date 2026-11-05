@@ -60,7 +60,10 @@ export function visionConfigured(): boolean {
   return aiConfigured()
 }
 
-export async function fileToDataUrl(file: File): Promise<string> {
+export async function fileToDataUrl(
+  file: File,
+  options?: { maxEdge?: number; quality?: number },
+): Promise<string> {
   const raw = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -70,7 +73,7 @@ export async function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error('Could not read that image.'))
     reader.readAsDataURL(file)
   })
-  return compressDataUrl(raw)
+  return compressDataUrl(raw, options?.maxEdge ?? 1280, options?.quality ?? 0.72)
 }
 
 /** Shrink large camera photos so Groq/OpenAI vision requests stay under size limits. */

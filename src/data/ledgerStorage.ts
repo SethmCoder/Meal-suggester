@@ -1,15 +1,16 @@
-import type { Consumption, Purchase } from './types'
+import type { Consumption, Purchase, Receipt } from './types'
 
-/** Client-side ledger for Supabase sessions (no migration required). */
+/** Client-side ledger for purchases, consumptions, and receipt photos (no migration required). */
 const KEY_PREFIX = 'planora.ledger.v1.'
 
 interface LedgerBlob {
   purchases: Purchase[]
   consumptions: Consumption[]
+  receipts: Receipt[]
 }
 
 function empty(): LedgerBlob {
-  return { purchases: [], consumptions: [] }
+  return { purchases: [], consumptions: [], receipts: [] }
 }
 
 function read(userId: string): LedgerBlob {
@@ -20,6 +21,7 @@ function read(userId: string): LedgerBlob {
     return {
       purchases: Array.isArray(parsed.purchases) ? parsed.purchases : [],
       consumptions: Array.isArray(parsed.consumptions) ? parsed.consumptions : [],
+      receipts: Array.isArray(parsed.receipts) ? parsed.receipts : [],
     }
   } catch {
     return empty()
@@ -50,4 +52,22 @@ export function addLedgerConsumption(userId: string, entry: Consumption): Consum
   blob.consumptions.push(entry)
   write(userId, blob)
   return entry
+}
+
+export function listLedgerReceipts(userId: string): Receipt[] {
+  return [...read(userId).receipts].sort((a, b) => b.purchasedAt.localeCompare(a.purchasedAt))
+}
+
+export function addLedgerReceipt(userId: string, receipt: Receipt): Receipt {
+  const blob = read(userId)
+  blob.receipts.push(receipt)
+  try {
+    write(userId, blob)
+    return receipt
+  } catch {
+    const slim: Receipt = { ...receipt, imageDataUrl: null }
+    blob.receipts[blob.receipts.length - 1] = slim
+    write(userId, blob)
+    return slim
+  }
 }

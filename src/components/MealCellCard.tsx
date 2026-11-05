@@ -65,6 +65,7 @@ export function MealCellCard({
             </span>
           </button>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
             {finished ? <Badge tone="success">Finished</Badge> : null}
             {minutes != null ? <Badge tone="neutral">{minutes} min{meal.timeIsEstimated ? ' est.' : ''}</Badge> : null}
             {stock ? (
@@ -74,6 +75,7 @@ export function MealCellCard({
               <Badge tone="primary">≤ {cell.constraint.maxMinutes} min</Badge>
             ) : null}
           </div>
+          {meal.why ? <p className="mt-2 text-xs leading-relaxed text-muted">{meal.why}</p> : null}
           {meal.sourceUrl ? (
             <a
               href={meal.sourceUrl}
@@ -178,6 +180,7 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
               </Badge>
             ) : null}
             <Badge tone={stock.missingCount ? 'accent' : 'success'}>{stock.label}</Badge>
+            {meal.isLeftover ? <Badge tone="accent">Leftovers</Badge> : null}
           </div>
           {meal.sourceUrl ? (
             <a
@@ -194,6 +197,12 @@ export function MealDetails({ meal, inventory }: { meal: Meal; inventory: Invent
           ) : null}
         </div>
       </div>
+      {meal.why ? (
+        <div>
+          <h4 className="text-sm font-semibold text-ink">Why this meal</h4>
+          <p className="mt-2 text-sm leading-relaxed text-muted">{meal.why}</p>
+        </div>
+      ) : null}
       <div>
         <h4 className="text-sm font-semibold text-ink">Ingredients</h4>
         <ul className="mt-2 space-y-1 text-sm text-muted">

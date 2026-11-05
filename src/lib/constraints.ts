@@ -187,7 +187,7 @@ export function parsePlanRequest(message: string): PlanRequest {
   const maxMinutes = explicit ? Number(explicit[1]) : loose ? Number(loose[1]) : null
 
   const wantWeek = /\b(whole week|entire week|full week|plan (?:my |the )?week|this week)\b/.test(lower)
-  const preferInventory = /\b(inventory|what i have|already have|use up|on hand)\b/.test(lower)
+  const preferInventory = /\b(inventory|what i have|already have|use up|on hand|expir\w*|freezer|frozen|have to eat)\b/.test(lower)
 
   const foodFocus = FOOD_HINTS.filter((hint) => new RegExp(`\\b${hint}\\b`, 'i').test(lower))
 

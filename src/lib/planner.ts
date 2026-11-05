@@ -36,6 +36,17 @@ export function recipeToMeal(recipe: RetrievedRecipe): Meal {
   }
 }
 
+/** Join matcher reasons into one short paragraph stored on the meal. */
+export function joinReasons(reasons: string[]): string {
+  const parts = [...new Set(reasons.map((reason) => reason.trim()).filter(Boolean))]
+  if (!parts.length) return 'Chosen because it fits this meal slot.'
+  return parts.map((part) => (/[.!?]$/.test(part) ? part : `${part}.`)).join(' ')
+}
+
+function withExplanation(meal: Meal, reasons: string[]): Meal {
+  return { ...meal, why: joinReasons(reasons) }
+}
+
 function ingredientNames(recipe: RetrievedRecipe): string[] {
   return recipe.ingredients.map((ingredient) => ingredient.name)
 }
@@ -241,11 +252,15 @@ export function selectSuggestions(input: {
     const reasons = [...best.reasons]
     if (theme && themed[0]) reasons.unshift(`Matches ${cell.day} theme: ${theme}`)
     if (reused) reasons.push('Repeated because fewer unique recipes were available than meal slots')
+    const minutes = totalMinutes(best.recipe)
+    if (cap != null && minutes != null && minutes <= cap) {
+      reasons.push(`Fits a ${cap} minute time limit`)
+    }
     suggestions.push({
       day: cell.day,
       slot: cell.slot,
       recipe: best.recipe,
-      meal: recipeToMeal(best.recipe),
+      meal: withExplanation(recipeToMeal(best.recipe), reasons),
       reasons,
     })
   }

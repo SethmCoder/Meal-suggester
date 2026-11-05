@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AiChat } from '../components/AiChat'
 import { MealCellCard, MealDetails } from '../components/MealCellCard'
 import { MealEditorModal } from '../components/MealEditorModal'
 import { PlanWholeWeek } from '../components/PlanWholeWeek'
+import { UseUpFoods } from '../components/UseUpFoods'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { InventoryItem, Meal, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAYS } from '../data/types'
 import { consumeMealFromInventory } from '../lib/consume'
+import type { MustEatFood } from '../lib/mustEat'
+import { suggestMeals } from '../lib/suggest'
+import { describeAppliedPattern, inferRecurringCaps, listObservations, recordWeekConstraints } from '../lib/timePatterns'
 import { addWeeks, formatDayHeading, formatWeekRange, mondayOf } from '../lib/dates'
 import { moveMeal } from '../lib/meals'
 import type { Suggestion } from '../lib/planner'
@@ -24,6 +28,8 @@ export function MealsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [finishingKey, setFinishingKey] = useState<string | null>(null)
+  const [useUpBusy, setUseUpBusy] = useState(false)
+  const [useUpNote, setUseUpNote] = useState<string | null>(null)
   const [editor, setEditor] = useState<{ day: Weekday; slot: MealSlot; meal: Meal | null } | null>(null)
   const [details, setDetails] = useState<Meal | null>(null)
 
@@ -78,6 +84,7 @@ export function MealsPage() {
     if (!store) return
     setWeek(next)
     await store.saveWeek(next)
+    if (profile) recordWeekConstraints(profile.id, next)
   }
 
   async function updateCell(day: Weekday, slot: MealSlot, meal: Meal | null) {
@@ -96,15 +103,21 @@ export function MealsPage() {
     setFinishingKey(key)
     setError(null)
     try {
-      const { inventory: nextInventory, deducted } = consumeMealFromInventory(cell.meal, inventory)
-      await store.replaceInventory(nextInventory)
-      setInventory(nextInventory)
+      const leftover = Boolean(cell.meal.isLeftover)
+      const consumed = leftover
+        ? { inventory, deducted: [] as ReturnType<typeof consumeMealFromInventory>['deducted'] }
+        : consumeMealFromInventory(cell.meal, inventory)
+      if (!leftover) {
+        await store.replaceInventory(consumed.inventory)
+        setInventory(consumed.inventory)
+      }
       await store.addConsumption({
         mealName: cell.meal.name,
         day,
         slot,
         weekStart,
-        items: deducted.map((item) => ({
+        note: leftover ? 'Leftovers from an earlier cook, so inventory was not deducted again.' : undefined,
+        items: consumed.deducted.map((item) => ({
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
@@ -122,6 +135,12 @@ export function MealsPage() {
       setFinishingKey(null)
     }
   }
+
+  const recurringCaps = useMemo(
+    () => (profile ? inferRecurringCaps(listObservations(profile.id), week) : []),
+    [profile, week],
+  )
+  const patternNote = useMemo(() => (week ? describeAppliedPattern(week.cells) : null), [week])
 
   if (!store || !preferences) {
     return <div className="text-muted">{loading ? 'Loading meals…' : 'Session unavailable.'}</div>
@@ -168,6 +187,51 @@ export function MealsPage() {
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {patternNote ? (
+        <p className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-ink">{patternNote}</p>
+      ) : null}
+
+      {week && preferences ? (
+        <UseUpFoods
+          inventory={inventory}
+          busy={useUpBusy}
+          note={useUpNote}
+          onPlan={async (foods: MustEatFood[]) => {
+            if (!store || !week || !preferences) return
+            setUseUpBusy(true)
+            setUseUpNote(null)
+            setError(null)
+            try {
+              const names = foods.map((food) => food.name)
+              const openSlots = week.cells.filter((cell) => !cell.meal).length
+              const result = await suggestMeals({
+                message: `I have to eat these foods from the freezer or because they are expiring: ${names.join(', ')}. Plan meals that use them.`,
+                inventory,
+                preferences,
+                week,
+                feedback,
+                options: { wantWeek: true, emptyOnly: openSlots > 0, mustUse: names, recurringCaps },
+              })
+              const byCell = new Map(result.suggestions.map((item) => [`${item.day}:${item.slot}`, item]))
+              const cells = week.cells.map((cell) => {
+                const hit = byCell.get(`${cell.day}:${cell.slot}`)
+                if (!hit) return cell
+                return { ...cell, meal: hit.meal, finished: false }
+              })
+              await saveWeek({ ...week, cells })
+              for (const suggestion of result.suggestions) {
+                await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
+              }
+              setFeedback(await store.listFeedback())
+              setUseUpNote(result.reply)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Could not plan around those foods.')
+            } finally {
+              setUseUpBusy(false)
+            }
+          }}
+        />
+      ) : null}
 
       {week && preferences ? (
         <PlanWholeWeek
@@ -197,6 +261,7 @@ export function MealsPage() {
           onEditSuggestion={(suggestion) => {
             setEditor({ day: suggestion.day, slot: suggestion.slot, meal: suggestion.meal })
           }}
+          recurringCaps={recurringCaps}
         />
       ) : null}
 
@@ -306,6 +371,7 @@ export function MealsPage() {
           onEditSuggestion={(suggestion) => {
             setEditor({ day: suggestion.day, slot: suggestion.slot, meal: suggestion.meal })
           }}
+          recurringCaps={recurringCaps}
         />
       ) : null}
 

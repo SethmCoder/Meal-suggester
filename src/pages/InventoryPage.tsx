@@ -75,7 +75,7 @@ export function InventoryPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-ink">Food inventory</h1>
           <p className="mt-1 text-sm text-muted">
-            Track what you own, or scan fridge, freezer, cart, and receipt photos to get started fast.
+            Track what you own, scan fridge and pantry photos, or open Expenses to upload a grocery receipt.
             {persistenceNote ? ` ${persistenceNote}` : ''}
           </p>
         </div>
@@ -90,7 +90,7 @@ export function InventoryPage() {
             to="/app/expenses"
             className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary-hover"
           >
-            Expenses
+            Expenses & receipts
           </Link>
         </div>
       </div>
@@ -160,6 +160,7 @@ export function InventoryPage() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-xs text-muted">{formatWhen(entry.finishedAt)}</p>
+                {entry.note ? <p className="mt-2 text-sm text-muted">{entry.note}</p> : null}
                 <ul className="mt-2 space-y-1 text-sm text-muted">
                   {entry.items.length ? (
                     entry.items.map((item, index) => (
@@ -172,7 +173,7 @@ export function InventoryPage() {
                         </span>
                       </li>
                     ))
-                  ) : (
+                  ) : entry.note ? null : (
                     <li>No matching inventory was deducted for this meal.</li>
                   )}
                 </ul>

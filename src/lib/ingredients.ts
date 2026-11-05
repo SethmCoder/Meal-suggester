@@ -289,15 +289,44 @@ interface ShoppingGroup {
   allCovered: boolean
 }
 
+type ShoppingMeal = {
+  id?: string
+  name: string
+  ingredients: Ingredient[]
+  isLeftover?: boolean
+  leftoverOf?: string | null
+}
+
+/** Drop leftover meals when the original cook is already on the list so ingredients are bought once. */
+export function mealsForShopping<T extends ShoppingMeal>(meals: T[]): T[] {
+  const ids = new Set(meals.map((meal) => meal.id).filter((id): id is string => Boolean(id)))
+  const countedOrphans = new Set<string>()
+  const cooks: T[] = []
+  for (const meal of meals) {
+    const sourceId = meal.leftoverOf || null
+    const marked = Boolean(meal.isLeftover || sourceId)
+    if (!marked) {
+      cooks.push(meal)
+      continue
+    }
+    if (sourceId && ids.has(sourceId)) continue
+    const orphanKey = sourceId || meal.id || meal.name
+    if (countedOrphans.has(orphanKey)) continue
+    countedOrphans.add(orphanKey)
+    cooks.push(meal)
+  }
+  return cooks
+}
+
 export function buildShoppingList(
-  meals: { name: string; ingredients: Ingredient[] }[],
+  meals: ShoppingMeal[],
   inventory: InventoryItem[],
   purchasedKeys: string[],
 ): ShoppingRow[] {
   const purchased = new Set(purchasedKeys)
   const groups = new Map<string, ShoppingGroup>()
 
-  for (const meal of meals) {
+  for (const meal of mealsForShopping(meals)) {
     for (const ingredient of meal.ingredients) {
       const key = ingredientKey(ingredient.name)
       if (!key) continue
