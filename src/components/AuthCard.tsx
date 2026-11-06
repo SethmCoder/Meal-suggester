@@ -5,11 +5,11 @@ export function AuthCard({ children, footer }: { children: ReactNode; footer?: R
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
       <div className="card-shadow w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex items-center gap-4 bg-primary px-6 py-6 text-white">
+        <div className="flex items-center gap-4 border-b border-line bg-canvas px-6 py-6 text-ink">
           <AppLogo size={64} />
           <div>
-            <p className="text-3xl font-bold tracking-tight">Planora</p>
-            <p className="text-sm text-white/85">Food inventory & meal planning.</p>
+            <p className="font-display text-4xl font-semibold tracking-tight">Planora</p>
+            <p className="text-sm text-muted">Food inventory and meal planning.</p>
           </div>
         </div>
         <div className="px-6 py-6">{children}</div>

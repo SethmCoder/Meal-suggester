@@ -143,7 +143,7 @@ export function AiChat({
         <div className="soft-shadow fixed bottom-24 z-30 flex h-[min(560px,70vh)] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-surface"
           style={{ right: 'calc(1.5rem + var(--sidebar-offset, 15rem))' }}
         >
-          <div className="flex items-center justify-between border-b border-line bg-primary px-4 py-3 text-white">
+          <div className="flex items-center justify-between border-b border-line bg-secondary px-4 py-3 text-white">
             <div>
               <p className="font-semibold">Planora assistant</p>
               <p className="text-xs text-white/80">Personalized from inventory & preferences</p>

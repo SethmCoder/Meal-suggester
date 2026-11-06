@@ -127,13 +127,13 @@ export function OnboardingSurveyPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white px-4 py-10">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
       <div className="card-shadow w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex items-center gap-4 bg-primary px-6 py-5 text-white">
+        <div className="flex items-center gap-4 border-b border-line bg-canvas px-6 py-5 text-ink">
           <AppLogo size={72} />
           <div className="min-w-0 flex-1">
-            <p className="text-2xl font-bold tracking-tight">Welcome to Planora</p>
-            <p className="text-sm text-white/85">A few questions, only this first time.</p>
+            <p className="font-display text-3xl font-semibold tracking-tight">Welcome to Planora</p>
+            <p className="text-sm text-muted">A few questions, only this first time.</p>
           </div>
         </div>
         <div className="flex items-center justify-between border-b border-line px-6 py-3 text-xs font-medium text-muted">

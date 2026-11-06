@@ -397,9 +397,9 @@ export function MealsPage() {
               {WEEKDAYS.map((day, index) => {
                 const heading = formatDayHeading(weekStart, index)
                 return (
-                  <div key={day} className="rounded-xl bg-secondary px-3 py-2 text-center text-white">
-                    <p className="text-sm font-semibold">{heading.weekday}</p>
-                    <p className="text-xs text-white/75">{heading.date}</p>
+                  <div key={day} className="rounded-xl border border-line bg-primary/10 px-3 py-2 text-center text-primary">
+                    <p className="font-display text-base font-semibold">{heading.weekday}</p>
+                    <p className="text-xs text-ink/70">{heading.date}</p>
                   </div>
                 )
               })}
@@ -418,9 +418,9 @@ export function MealsPage() {
               const heading = formatDayHeading(weekStart, index)
               return (
                 <section key={day} className="soft-shadow rounded-2xl border border-line bg-surface p-3">
-                  <div className="mb-3 rounded-xl bg-secondary px-3 py-2 text-center text-white">
-                    <p className="text-sm font-semibold">{heading.weekday}</p>
-                    <p className="text-xs text-white/75">{heading.date}</p>
+                  <div className="mb-3 rounded-xl border border-line bg-primary/10 px-3 py-2 text-center text-primary">
+                    <p className="font-display text-base font-semibold">{heading.weekday}</p>
+                    <p className="text-xs text-ink/70">{heading.date}</p>
                   </div>
                   <div className="space-y-2">
                     {MEAL_SLOTS.map((slot) => (

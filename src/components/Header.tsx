@@ -20,11 +20,11 @@ export function Header({
   return (
     <header
       data-tutorial="header"
-      className="fixed inset-x-0 top-0 z-50 flex h-16 items-center gap-3 border-b border-line bg-white px-4 shadow-sm md:h-20 md:px-6"
+      className="fixed inset-x-0 top-0 z-50 flex h-16 items-center gap-3 border-b border-line bg-canvas/95 px-4 backdrop-blur md:h-20 md:px-6"
     >
       <Link to="/app" className="flex min-w-0 items-center gap-2.5 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         <AppLogo size={44} />
-        <span className="truncate text-xl font-bold tracking-tight text-ink md:text-2xl">Planora</span>
+        <span className="font-display truncate text-2xl font-semibold tracking-tight text-ink md:text-3xl">Planora</span>
       </Link>
       <div className="ml-auto flex items-center gap-2 sm:gap-3 md:gap-4">
         <p className="text-sm text-muted">

@@ -1,7 +1,7 @@
 import {
   BookOpen,
   ChefHat,
-  ChevronsRight,
+  ChevronsLeft,
   LogOut,
   Receipt,
   Refrigerator,
@@ -29,7 +29,7 @@ function ItemLabel({ collapsed, children }: { collapsed: boolean; children: stri
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
     'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
-    isActive ? 'bg-primary text-white' : 'text-white/80 hover:bg-white/10 hover:text-white',
+    isActive ? 'bg-canvas text-primary' : 'text-white/75 hover:bg-white/10 hover:text-white',
   )
 
 export function Sidebar({
@@ -44,9 +44,9 @@ export function Sidebar({
     <aside
       data-tutorial="sidebar"
       className={cn(
-        'sidebar-rail fixed bottom-0 right-0 top-16 z-40 flex w-64 flex-col border-l border-white/10 bg-secondary text-white transition-[transform,width] md:top-20',
+        'sidebar-rail fixed bottom-0 left-0 top-16 z-40 flex w-64 flex-col border-r border-white/10 bg-secondary text-white transition-[transform,width] md:top-20',
         collapsed && 'is-collapsed',
-        mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
       )}
     >
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
@@ -109,7 +109,7 @@ export function Sidebar({
           title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           aria-label={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         >
-          <ChevronsRight className={cn('h-5 w-5 shrink-0 transition', collapsed && 'md:rotate-180')} />
+          <ChevronsLeft className={cn('h-5 w-5 shrink-0 transition', collapsed && 'md:rotate-180')} />
           <span className="md:hidden">Collapse Sidebar</span>
           {!collapsed ? <span className="hidden md:inline">Collapse Sidebar</span> : null}
         </button>
