@@ -4,6 +4,7 @@ import { AppShell } from './components/AppShell'
 import { SessionProvider, useSession } from './context/SessionContext'
 import { DemoPage } from './pages/DemoPage'
 import { ExpensesPage } from './pages/ExpensesPage'
+import { IdealPlanPage } from './pages/IdealPlanPage'
 import { InventoryPage } from './pages/InventoryPage'
 import { LoginPage } from './pages/LoginPage'
 import { MealsPage } from './pages/MealsPage'
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/onboarding" element={<OnboardingSurveyPage />} />
           <Route path="/app" element={<AppShell />}>
             <Route index element={<MealsPage />} />
+            <Route path="ideal" element={<IdealPlanPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="expenses" element={<ExpensesPage />} />
             <Route path="shopping" element={<ShoppingListPage />} />

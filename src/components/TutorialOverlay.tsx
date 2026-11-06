@@ -11,8 +11,8 @@ const STEPS = [
     target: 'header',
   },
   {
-    title: 'Right sidebar',
-    body: 'Jump between Current Meals, Food Inventory, Shopping List, Food Preferences, Tutorial, Settings, and Log Out. Collapse the rail when you need more space.',
+    title: 'Sidebar',
+    body: 'Jump between Current Meals, Ideal meals, Food Inventory, Shopping List, Food Preferences, Tutorial, Settings, and Log Out. Collapse the rail when you need more space.',
     path: '/app',
     target: 'sidebar',
   },

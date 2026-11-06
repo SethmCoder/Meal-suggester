@@ -99,6 +99,7 @@ export function AiChat({
           recurringCaps,
           avoidIngredients,
           preferTerms: [...preferTermsFrom(loadTaste(userId)), ...focus],
+          userId,
         },
       })
       if (result.constraints.length) await onApplyConstraints(result.constraints)

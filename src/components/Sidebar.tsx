@@ -1,6 +1,7 @@
 import {
   BookOpen,
   ChefHat,
+  ClipboardList,
   ChevronsLeft,
   LogOut,
   Receipt,
@@ -58,6 +59,10 @@ export function Sidebar({
         <NavLink to="/app" end className={linkClass} title="Current Meals" onClick={onNavigate}>
           <ChefHat className="h-5 w-5 shrink-0" />
           <ItemLabel collapsed={collapsed}>Current Meals</ItemLabel>
+        </NavLink>
+        <NavLink to="/app/ideal" className={linkClass} title="Ideal meals" onClick={onNavigate}>
+          <ClipboardList className="h-5 w-5 shrink-0" />
+          <ItemLabel collapsed={collapsed}>Ideal meals</ItemLabel>
         </NavLink>
         <NavLink to="/app/inventory" className={linkClass} title="Food Inventory" onClick={onNavigate}>
           <Refrigerator className="h-5 w-5 shrink-0" />

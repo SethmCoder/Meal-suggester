@@ -40,6 +40,7 @@ export async function rankWithModel(input: {
   foodFocus?: string[]
   mustUseFoods?: string[]
   likedFoods?: string[]
+  idealMeals?: { day: Weekday; slot: MealSlot; name: string }[]
   timeCaps?: { day: Weekday; slot: MealSlot; maxMinutes: number }[]
 }): Promise<{ reply: string; picks: ModelPick[] } | null> {
   const base = aiBaseUrl()
@@ -65,7 +66,7 @@ export async function rankWithModel(input: {
     'Return exactly one pick for every listed target cell — no more, no fewer when the catalog allows.',
     'Only use day/slot pairs present in targets. Do not invent extra days.',
     'Never assign dessert/sweets to breakfast, lunch, or dinner.',
-    'If likedFoods are provided, prefer catalog recipes that share those foods when they still fit the slot.',
+    'If idealMeals are provided, prefer a retrieved recipe that resembles the named example for that day and slot. Never invent a meal that is not in the catalog.',
     'mustUseFoods are items the cook already owns and needs to eat soon (freezer food or food that is expiring). Use them before suggesting meals that ignore them.',
     'Do not claim recipes came from Instagram. Only use the retrieved catalog.',
     'For breakfast targets, prefer egg dishes, oatmeal, pancakes, toast, and similar breakfast foods when requested or appropriate.',
@@ -92,6 +93,7 @@ export async function rankWithModel(input: {
           foodFocus: input.foodFocus ?? [],
           mustUseFoods: input.mustUseFoods ?? [],
           likedFoods: input.likedFoods ?? [],
+          idealMeals: input.idealMeals ?? [],
           targets: input.targets,
           targetCount,
           dayThemes: input.dayThemes ?? {},

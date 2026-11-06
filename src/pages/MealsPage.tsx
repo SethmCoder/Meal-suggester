@@ -260,7 +260,7 @@ export function MealsPage() {
                 preferences,
                 week,
                 feedback,
-                options: { wantWeek: true, emptyOnly: openSlots > 0, mustUse: names, recurringCaps },
+                options: { wantWeek: true, emptyOnly: openSlots > 0, mustUse: names, recurringCaps, userId: profile.id },
               })
               if (!result.suggestions.length) {
                 setUseUpNote(result.reply || 'No retrieved recipe used those foods.')

@@ -174,6 +174,7 @@ export function MealConversation({
           excludeNames: shownNames,
           avoidIngredients: avoided,
           preferTerms: preferTermsFrom(loadTaste(userId)),
+          userId,
           mustUse: soon,
           forcePreferInventory: planStyle === 'on-hand' || planStyle === 'fewer-items',
         },
@@ -333,6 +334,7 @@ export function MealConversation({
           excludeNames: [...excludedNames, suggestion.meal.name],
           avoidIngredients: [...avoid, ...reading.disliked],
           preferTerms: [...preferTermsFrom(loadTaste(userId)), ...reading.focus],
+          userId,
           forcePreferInventory: planStyle === 'on-hand' || planStyle === 'fewer-items',
         },
       })

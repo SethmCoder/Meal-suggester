@@ -129,6 +129,7 @@ export function PlanWholeWeek({
             WEEKDAYS.filter((day) => dayThemes[day].trim() && !eatOutDays.includes(day)).map((day) => [day, dayThemes[day].trim()]),
           ) as Partial<Record<Weekday, string>>,
           recurringCaps,
+          userId,
           eatOutDays,
           preferTerms: preferTermsFrom(loadTaste(userId)),
           forcePreferInventory: planStyle === 'on-hand' || planStyle === 'fewer-items',

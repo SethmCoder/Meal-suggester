@@ -3,6 +3,7 @@ import { allergyConflict, containsTerm, dietConflict, dislikedConflict } from '.
 import { createId } from './id'
 import { ingredientKey, matchIngredient } from './ingredients'
 import { breakfastLike, fitsMealSlot, slotScore } from './mealSlots'
+import { idealWords } from './idealPlan'
 import { openPackageGaps, packageFillBonus } from './packages'
 import { totalMinutes } from './meals'
 import { preferredPublishers } from './recipeSources'
@@ -236,6 +237,8 @@ export function selectSuggestions(input: {
   foodFocus?: string[]
   /** Tastes learned from earlier accepts. Boosts similar recipes without treating them as a new request. */
   preferTerms?: string[]
+  /** Example meal names keyed by `${day}:${slot}`. */
+  idealByCell?: Record<string, string>
 }): { suggestions: Suggestion[]; relaxedDislikes: boolean; relaxedInventory: boolean } {
   const rejected = new Set(
     input.feedback.filter((item) => !item.accepted).map((item) => ingredientKey(item.mealName)),
@@ -308,9 +311,14 @@ export function selectSuggestions(input: {
         if (overlap > 0) {
           reasons.push(`Reuses ${overlap} ingredient${overlap === 1 ? '' : 's'} from other planned meals`)
         }
+        const ideal = input.idealByCell?.[`${cell.day}:${cell.slot}`]?.trim()
+        const idealTerms = ideal ? idealWords(ideal) : []
+        const hay = `${item.recipe.name} ${item.recipe.cuisineHint ?? ''} ${recipeIngredientKeys(item.recipe).join(' ')}`.toLowerCase()
+        const idealHits = idealTerms.filter((term) => hay.includes(term))
+        if (ideal && idealHits.length) reasons.unshift(`Close to your ideal meal: ${ideal}`)
         return {
           ...item,
-          value: item.value + fit.delta + reuseBonus + packBonus.delta,
+          value: item.value + fit.delta + reuseBonus + packBonus.delta + (idealHits.length ? 28 : 0),
           reasons,
         }
       })

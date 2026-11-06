@@ -20,6 +20,7 @@ import {
   selectSuggestions,
   type Suggestion,
 } from './planner'
+import { filledIdealMeals, idealWords, loadIdealPlan, mealMatchesIdeal, type IdealPlan } from './idealPlan'
 import { retrieveRecipes } from './recipes'
 
 export interface AssistantResult {
@@ -55,6 +56,8 @@ export interface SuggestOptions {
   preferTerms?: string[]
   /** Suggest this cell only, even if the message mentions a week. */
   onlyCell?: { day: Weekday; slot: MealSlot }
+  /** Account id used to read the saved ideal meal plan. */
+  userId?: string
 }
 
 function searchTerms(
@@ -130,6 +133,7 @@ function backfillSuggestions(input: {
   dayThemes?: Partial<Record<Weekday, string>>
   foodFocus?: string[]
   preferTerms?: string[]
+  idealByCell?: IdealPlan
 }): Suggestion[] {
   const filled = new Set(input.existing.map((item) => `${item.day}:${item.slot}`))
   const missing = input.targets.filter((cell) => !filled.has(`${cell.day}:${cell.slot}`))
@@ -156,6 +160,7 @@ function backfillSuggestions(input: {
     allowReuse: distinctDishCount(pool.length ? pool : input.recipes) < missing.length || unusedRecipes.length === 0,
     foodFocus: input.foodFocus,
     preferTerms: input.preferTerms,
+    idealByCell: input.idealByCell,
   })
   return [...input.existing, ...filler.suggestions]
 }
@@ -229,6 +234,9 @@ export async function suggestMeals(input: {
       : []),
   ]
 
+  const idealPlan = input.options?.userId ? loadIdealPlan(input.options.userId) : {}
+  const idealSearch = targets.flatMap((cell) => idealWords(idealPlan[`${cell.day}:${cell.slot}`] ?? ''))
+
   const { recipes: retrieved, broadened, preferredHits } = await retrieveRecipes(
     searchTerms(
       input.message,
@@ -236,7 +244,7 @@ export async function suggestMeals(input: {
       input.preferences,
       input.options?.dayThemes,
       wantWeek,
-      [...mustUse, ...(input.options?.preferTerms ?? [])],
+      [...idealSearch, ...mustUse, ...(input.options?.preferTerms ?? [])],
     ),
     input.preferences.recipeSites,
     {
@@ -263,6 +271,7 @@ export async function suggestMeals(input: {
     allowReuse,
     foodFocus,
     preferTerms: input.options?.preferTerms,
+    idealByCell: idealPlan,
   })
 
   let suggestions = local.suggestions
@@ -290,6 +299,9 @@ export async function suggestMeals(input: {
       foodFocus,
       mustUseFoods: mustUse,
       likedFoods: input.options?.preferTerms,
+      idealMeals: filledIdealMeals(idealPlan).filter((item) =>
+        targets.some((cell) => cell.day === item.day && cell.slot === item.slot),
+      ),
       timeCaps: targets
         .filter((cell) => cell.constraint?.maxMinutes != null)
         .map((cell) => ({
@@ -304,7 +316,7 @@ export async function suggestMeals(input: {
         foodFocus,
       })
       if (fromModel.length) {
-        suggestions = fromModel
+        suggestions = preferIdealMatches(fromModel, local.suggestions, idealPlan)
         mode = 'ai'
         reply = ranked.reply || 'Here are meals chosen from recipes that were actually retrieved.'
       }
@@ -325,6 +337,7 @@ export async function suggestMeals(input: {
       dayThemes: input.options?.dayThemes,
       foodFocus,
       preferTerms: input.options?.preferTerms,
+      idealByCell: idealPlan,
     })
   }
 
@@ -409,6 +422,21 @@ function unusedFittingRecipe(
     if ((slot === 'lunch' || slot === 'dinner') && breakfastLike(recipe)) return false
     const key = dishKey(recipe)
     return !usedIds.has(recipe.providerId) && !usedNames.has(key)
+  })
+}
+
+function preferIdealMatches(model: Suggestion[], local: Suggestion[], plan: IdealPlan): Suggestion[] {
+  return model.map((item) => {
+    const ideal = plan[`${item.day}:${item.slot}`]?.trim()
+    if (!ideal) return item
+    const matches = (suggestion: Suggestion) =>
+      mealMatchesIdeal(
+        suggestion.meal.name,
+        suggestion.meal.ingredients.map((ingredient) => ingredient.name),
+        ideal,
+      )
+    if (matches(item)) return item
+    return local.find((suggestion) => suggestion.day === item.day && suggestion.slot === item.slot && matches(suggestion)) ?? item
   })
 }
 
