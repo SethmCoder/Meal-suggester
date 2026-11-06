@@ -34,7 +34,7 @@ export function slotScore(recipe: RetrievedRecipe, slot: MealSlot): { delta: num
     return { delta: -4 }
   }
   if (slot === 'lunch' || slot === 'dinner') {
-    if (breakfastLike(recipe) && (recipe.categoryHint ?? '').toLowerCase() === 'breakfast') {
+    if (breakfastLike(recipe)) {
       return { delta: -18, reason: 'Less ideal as a main lunch/dinner' }
     }
     return { delta: 0 }

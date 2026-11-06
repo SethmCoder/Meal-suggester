@@ -3,6 +3,7 @@ import { MessageCircle, X } from 'lucide-react'
 import type { InventoryItem, Meal, MealFeedback, Preferences, WeekPlan } from '../data/types'
 import type { RecurringCap } from '../lib/timePatterns'
 import { suggestMeals } from '../lib/suggest'
+import { applyDislikes, interpretClarification, loadTaste, preferTermsFrom, readReply } from '../lib/taste'
 import type { Suggestion } from '../lib/planner'
 import { MealThumb } from './MealCellCard'
 import { Badge, Button, TextArea } from './ui'
@@ -16,23 +17,27 @@ interface ChatMessage {
 }
 
 interface AiChatProps {
+  userId: string
   inventory: InventoryItem[]
   preferences: Preferences
   week: WeekPlan
   feedback: MealFeedback[]
   onApplyConstraints: (constraints: Awaited<ReturnType<typeof suggestMeals>>['constraints']) => Promise<void>
-  onAccept: (suggestion: Suggestion) => Promise<void>
-  onReject: (suggestion: Suggestion) => Promise<void>
+  onSavePreferences: (preferences: Preferences) => Promise<void>
+  onAccept: (suggestion: Suggestion) => Promise<string | void>
+  onReject: (suggestion: Suggestion) => Promise<string | void>
   onEditSuggestion: (suggestion: Suggestion) => void
   recurringCaps?: RecurringCap[]
 }
 
 export function AiChat({
+  userId,
   inventory,
   preferences,
   week,
   feedback,
   onApplyConstraints,
+  onSavePreferences,
   onAccept,
   onReject,
   onEditSuggestion,
@@ -45,9 +50,10 @@ export function AiChat({
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'Ask me to fill a meal or the whole week. Tell me about freezer food or anything expiring and I will look for retrieved recipes that use it. I only suggest recipes that were actually retrieved.',
+      text: 'Tell me what you want, one meal or the week. If you skip a dish, tell me why and the next one will change.',
     },
   ])
+  const [pendingIngredient, setPendingIngredient] = useState<string | null>(null)
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -57,13 +63,43 @@ export function AiChat({
     setBusy(true)
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', text: message }])
     try {
+      let prefs = preferences
+      let avoidIngredients: string[] = []
+      let focus: string[] = []
+      let learnedNote = ''
+      if (pendingIngredient) {
+        const answer = interpretClarification(message, pendingIngredient)
+        if (answer === 'ingredient') {
+          const next = applyDislikes(prefs, [pendingIngredient])
+          prefs = next.preferences
+          if (next.changed) await onSavePreferences(prefs)
+          avoidIngredients = [pendingIngredient]
+          learnedNote = `I'll leave ${pendingIngredient} out.`
+        } else if (answer === 'dish') {
+          learnedNote = 'Got it. I will skip that dish and keep the ingredient.'
+        }
+        setPendingIngredient(null)
+      }
+      const reading = readReply(message)
+      if (reading.disliked.length) {
+        const next = applyDislikes(prefs, reading.disliked)
+        prefs = next.preferences
+        if (next.changed) await onSavePreferences(prefs)
+        avoidIngredients = [...avoidIngredients, ...reading.disliked]
+        learnedNote = reading.note
+      }
+      focus = reading.focus
       const result = await suggestMeals({
         message,
         inventory,
-        preferences,
+        preferences: prefs,
         week,
         feedback,
-        options: { recurringCaps },
+        options: {
+          recurringCaps,
+          avoidIngredients,
+          preferTerms: [...preferTermsFrom(loadTaste(userId)), ...focus],
+        },
       })
       if (result.constraints.length) await onApplyConstraints(result.constraints)
       setMessages((prev) => [
@@ -71,7 +107,7 @@ export function AiChat({
         {
           id: crypto.randomUUID(),
           role: 'assistant',
-          text: [result.reply, result.patternNote].filter(Boolean).join(' '),
+          text: [learnedNote, result.reply, result.patternNote].filter(Boolean).join(' '),
           suggestions: result.suggestions,
           mode: result.mode,
         },
@@ -140,8 +176,22 @@ export function AiChat({
                       <SuggestionCard
                         key={`${suggestion.day}-${suggestion.slot}-${suggestion.meal.id}`}
                         suggestion={suggestion}
-                        onAccept={() => onAccept(suggestion)}
-                        onReject={() => onReject(suggestion)}
+                        onAccept={async () => {
+                          const note = await onAccept(suggestion)
+                          if (note) {
+                            setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', text: note }])
+                          }
+                        }}
+                        onReject={async () => {
+                          const note = await onReject(suggestion)
+                          if (note?.startsWith('Is it the ')) {
+                            const ingredient = note.match(/^Is it the ([^,]+),/)?.[1]
+                            if (ingredient) setPendingIngredient(ingredient)
+                          }
+                          if (note) {
+                            setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', text: note }])
+                          }
+                        }}
                         onEdit={() => onEditSuggestion(suggestion)}
                       />
                     ))}

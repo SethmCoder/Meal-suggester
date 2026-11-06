@@ -2,7 +2,7 @@ import type { InventoryItem, Meal, MealCell, MealFeedback, Preferences, Retrieve
 import { allergyConflict, containsTerm, dietConflict, dislikedConflict } from './diet'
 import { createId } from './id'
 import { ingredientKey, matchIngredient } from './ingredients'
-import { fitsMealSlot, slotScore } from './mealSlots'
+import { breakfastLike, fitsMealSlot, slotScore } from './mealSlots'
 import { openPackageGaps, packageFillBonus } from './packages'
 import { totalMinutes } from './meals'
 import { preferredPublishers } from './recipeSources'
@@ -10,6 +10,14 @@ import { simplePlaceholderFor, simplifyMeal } from './simpleMeals'
 
 function recipeIngredientKeys(recipe: RetrievedRecipe): string[] {
   return recipe.ingredients.map((item) => ingredientKey(item.name)).filter(Boolean)
+}
+
+export function dishKey(recipe: { name: string; providerId: string }): string {
+  return ingredientKey(recipe.name) || recipe.providerId
+}
+
+export function distinctDishCount(recipes: { name: string; providerId: string }[]): number {
+  return new Set(recipes.map((recipe) => dishKey(recipe))).size
 }
 
 export interface Suggestion {
@@ -226,6 +234,8 @@ export function selectSuggestions(input: {
   allowReuse?: boolean
   /** User-requested foods/cuisines, e.g. egg, scrambled. */
   foodFocus?: string[]
+  /** Tastes learned from earlier accepts. Boosts similar recipes without treating them as a new request. */
+  preferTerms?: string[]
 }): { suggestions: Suggestion[]; relaxedDislikes: boolean; relaxedInventory: boolean } {
   const rejected = new Set(
     input.feedback.filter((item) => !item.accepted).map((item) => ingredientKey(item.mealName)),
@@ -248,14 +258,19 @@ export function selectSuggestions(input: {
   let scored = pool.map((recipe) => {
     const base = scoreRecipe(recipe, input.inventory, input.preferences, input.feedback)
     const focus = input.foodFocus ?? []
-    if (!focus.length) return base
     const hay = `${recipe.name} ${recipe.cuisineHint ?? ''} ${recipe.categoryHint ?? ''} ${recipeIngredientKeys(recipe).join(' ')}`.toLowerCase()
     const hits = focus.filter((term) => hay.includes(term.toLowerCase()))
-    if (!hits.length) return base
+    const liked = (input.preferTerms ?? []).filter(
+      (term) => term && hay.includes(term.toLowerCase()) && !hits.some((hit) => hit.toLowerCase() === term.toLowerCase()),
+    )
+    if (!hits.length && !liked.length) return base
+    const reasons = [...base.reasons]
+    if (hits.length) reasons.unshift(`Matches your request: ${hits.join(', ')}`)
+    if (liked.length) reasons.push(`Similar to meals you have kept: ${liked.slice(0, 3).join(', ')}`)
     return {
       ...base,
-      value: base.value + hits.length * 8 + 6,
-      reasons: [`Matches your request: ${hits.join(', ')}`, ...base.reasons],
+      value: base.value + hits.length * 8 + (hits.length ? 6 : 0) + liked.length * 5,
+      reasons,
     }
   })
 
@@ -272,6 +287,7 @@ export function selectSuggestions(input: {
   scored.sort((a, b) => b.value - a.value || a.recipe.name.localeCompare(b.recipe.name))
 
   const used = new Set<string>()
+  const usedNames = new Set<string>()
   const sharedIngredients = new Set<string>()
   const suggestions: Suggestion[] = []
   for (const cell of input.targets) {
@@ -299,14 +315,18 @@ export function selectSuggestions(input: {
         }
       })
       .sort((a, b) => b.value - a.value || a.recipe.name.localeCompare(b.recipe.name))
-    const unused = timed.filter((item) => !used.has(item.recipe.providerId))
-    const pool = unused.length ? unused : input.allowReuse ? timed : []
+    const nonBreakfast = timed.filter((item) => !breakfastLike(item.recipe))
+    const slotPool = cell.slot !== 'breakfast' && nonBreakfast.length ? nonBreakfast : timed
+    const unused = slotPool.filter((item) => !used.has(item.recipe.providerId) && !usedNames.has(dishKey(item.recipe)))
+    const pool = unused.length ? unused : input.allowReuse ? slotPool : []
     const themed = theme ? pool.filter((item) => matchesDayTheme(item.recipe, theme)) : []
     // Prefer theme match among slot-appropriate recipes; never fall back to desserts.
     const best = themed[0] ?? pool[0]
     if (!best) continue
-    const reused = used.has(best.recipe.providerId)
+    const nameKey = dishKey(best.recipe)
+    const reused = used.has(best.recipe.providerId) || usedNames.has(nameKey)
     used.add(best.recipe.providerId)
+    usedNames.add(nameKey)
     for (const key of recipeIngredientKeys(best.recipe)) sharedIngredients.add(key)
     const reasons = [...best.reasons]
     if (theme && themed[0]) reasons.unshift(`Matches ${cell.day} theme: ${theme}`)

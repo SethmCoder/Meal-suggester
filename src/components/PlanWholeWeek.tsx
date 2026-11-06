@@ -5,17 +5,22 @@ import type { RecurringCap } from '../lib/timePatterns'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { foodsToUseFirst } from '../lib/mustEat'
 import { suggestMeals } from '../lib/suggest'
+import { loadTaste, preferTermsFrom } from '../lib/taste'
 import type { Suggestion } from '../lib/planner'
 import { MealThumb } from './MealCellCard'
+import { MealConversation } from './MealConversation'
 import { Badge, Button, FieldLabel, TextArea, TextInput, TextSelect } from './ui'
 
 interface PlanWholeWeekProps {
+  userId: string
   inventory: InventoryItem[]
   preferences: Preferences
   week: WeekPlan
   feedback: MealFeedback[]
   onApplyConstraints: (constraints: Awaited<ReturnType<typeof suggestMeals>>['constraints']) => Promise<void>
   onApplyAll: (suggestions: Suggestion[]) => Promise<void>
+  onAcceptOne: (suggestion: Suggestion) => Promise<void>
+  onSavePreferences: (preferences: Preferences) => Promise<void>
   onEditSuggestion: (suggestion: Suggestion) => void
   recurringCaps?: RecurringCap[]
 }
@@ -33,12 +38,15 @@ const PLAN_STYLES: { id: PlanStyle; label: string }[] = [
 ]
 
 export function PlanWholeWeek({
+  userId,
   inventory,
   preferences,
   week,
   feedback,
   onApplyConstraints,
   onApplyAll,
+  onAcceptOne,
+  onSavePreferences,
   onEditSuggestion,
   recurringCaps,
 }: PlanWholeWeekProps) {
@@ -60,6 +68,7 @@ export function PlanWholeWeek({
   const [reply, setReply] = useState<string | null>(null)
   const [mode, setMode] = useState<'ai' | 'match' | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [walking, setWalking] = useState(false)
 
   const themeSummary = useMemo(
     () =>
@@ -121,6 +130,7 @@ export function PlanWholeWeek({
           ) as Partial<Record<Weekday, string>>,
           recurringCaps,
           eatOutDays,
+          preferTerms: preferTermsFrom(loadTaste(userId)),
           forcePreferInventory: planStyle === 'on-hand' || planStyle === 'fewer-items',
           mustUse: planStyle === 'low-waste' ? expiring : undefined,
         },
@@ -167,10 +177,15 @@ export function PlanWholeWeek({
             Describe cuisine or vibes per day, and mark any day you want to eat out. Eating out is a placeholder: nothing is cooked or added to the shopping list.
           </p>
         </div>
-        <Button type="button" onClick={() => void planWeek()} disabled={busy} className="shrink-0">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {busy ? 'Planning…' : 'Plan my week'}
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" onClick={() => void planWeek()} disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {busy ? 'Planning…' : 'Plan my week'}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setWalking(true)} disabled={busy}>
+            Walk through the week
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -243,6 +258,27 @@ export function PlanWholeWeek({
       ) : null}
 
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+      {walking ? (
+        <MealConversation
+          userId={userId}
+          inventory={inventory}
+          preferences={preferences}
+          week={week}
+          feedback={feedback}
+          slots={slots}
+          emptyOnly={emptyOnly}
+          eatOutDays={eatOutDays}
+          dayThemes={dayThemes}
+          notes={notes}
+          planStyle={planStyle}
+          recurringCaps={recurringCaps}
+          onClose={() => setWalking(false)}
+          onAccept={async (suggestion) => {
+            await onAcceptOne(suggestion)
+          }}
+          onSavePreferences={onSavePreferences}
+        />
+      ) : null}
       {reply ? (
         <div className="mt-3 rounded-xl bg-canvas px-3 py-2 text-sm text-ink">
           <div className="flex flex-wrap items-center gap-2">

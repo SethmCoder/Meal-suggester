@@ -1,24 +1,18 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { AppLogo } from '../components/AppLogo'
-import { CheckboxOptionGroup } from '../components/CheckboxOptionGroup'
-import { Button, ErrorText, FieldLabel, TextArea, TextSelect } from '../components/ui'
+import { Button, ErrorText, TextArea } from '../components/ui'
 import { useSession } from '../context/SessionContext'
-import type { Preferences, SkillLevel } from '../data/types'
+import type { Preferences } from '../data/types'
 import { emptyPreferences } from '../data/types'
 import { COMMON_ALLERGIES, COMMON_CUISINES, COMMON_DIETARY } from '../lib/preferenceOptions'
 
-const STEPS = [
-  { id: 'allergies', title: 'Any food allergies?', subtitle: 'We treat these as hard exclusions.' },
-  { id: 'dietary', title: 'Dietary restrictions?', subtitle: 'Vegetarian, gluten-free, and similar rules stay strict.' },
-  { id: 'favorites', title: 'Foods you love — and don’t', subtitle: 'Favorites get preferred; dislikes stay out of suggestions.' },
-  { id: 'cuisines', title: 'Preferred cuisines', subtitle: 'We’ll lean toward these when suggesting meals.' },
-  { id: 'extras', title: 'Cooking setup (optional)', subtitle: 'Skill, equipment, and any notes for the assistant.' },
+const QUESTIONS = [
+  'Who is eating, and about how old is each person?',
+  'Any food allergies?',
+  'What do you like to eat, and what should I leave out?',
+  'When did you last plan meals, and what should this week feel like?',
 ] as const
-
-function listToText(values: string[]) {
-  return values.join(', ')
-}
 
 function textToList(value: string) {
   return value
@@ -27,25 +21,72 @@ function textToList(value: string) {
     .filter(Boolean)
 }
 
+function toggleValue(list: string[], value: string) {
+  return list.some((item) => item.toLowerCase() === value.toLowerCase())
+    ? list.filter((item) => item.toLowerCase() !== value.toLowerCase())
+    : [...list, value]
+}
+
+function Chip({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1.5 text-sm ${selected ? 'border-primary bg-primary text-white' : 'border-line bg-surface text-ink'}`}
+    >
+      {label}
+    </button>
+  )
+}
+
 export function OnboardingSurveyPage() {
   const { profile, store, setProfile } = useSession()
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [draft, setDraft] = useState<Preferences>(emptyPreferences())
+  const [household, setHousehold] = useState('')
+  const [otherAllergy, setOtherAllergy] = useState('')
+  const [likes, setLikes] = useState('')
+  const [dislikes, setDislikes] = useState('')
+  const [lastPlanned, setLastPlanned] = useState('')
+  const [weekFeel, setWeekFeel] = useState('')
+  const [answers, setAnswers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   if (!profile || !store) return <Navigate to="/" replace />
   if (profile.surveyCompleted) return <Navigate to="/app" replace />
 
-  const current = STEPS[step]
-  const isLast = step === STEPS.length - 1
+  function preferencesFromDraft(): Preferences {
+    const notes = [
+      household.trim() ? `Household: ${household.trim()}` : null,
+      lastPlanned.trim() ? `Last time planning meals: ${lastPlanned.trim()}` : null,
+      weekFeel.trim() ? `This week: ${weekFeel.trim()}` : null,
+    ].filter(Boolean)
+    return {
+      ...draft,
+      allergies: [...draft.allergies, ...textToList(otherAllergy)].filter(
+        (item, index, list) => list.findIndex((other) => other.toLowerCase() === item.toLowerCase()) === index,
+      ),
+      favorites: textToList(likes),
+      disliked: textToList(dislikes),
+      instructions: notes.join('\n'),
+    }
+  }
 
-  async function finish(prefs: Preferences) {
+  async function finish() {
     setBusy(true)
     setError(null)
     try {
-      await store!.savePreferences(prefs)
+      await store!.savePreferences(preferencesFromDraft())
       const next = await store!.updateProfile({ surveyCompleted: true })
       setProfile(next)
       navigate('/app', { replace: true })
@@ -56,9 +97,33 @@ export function OnboardingSurveyPage() {
     }
   }
 
-  function skipSurvey() {
-    // Soft-skip: keep anything already answered, fill the rest with defaults, mark complete.
-    void finish(draft)
+  function currentAnswer() {
+    if (step === 0) return household.trim() || 'Skipped'
+    if (step === 1) {
+      const names = [...draft.allergies, ...textToList(otherAllergy)]
+      return names.length ? names.join(', ') : 'No allergies'
+    }
+    if (step === 2) {
+      const parts = [
+        draft.dietary.length ? draft.dietary.join(', ') : null,
+        draft.cuisines.length ? draft.cuisines.join(', ') : null,
+        likes.trim() ? `likes ${likes.trim()}` : null,
+        dislikes.trim() ? `leave out ${dislikes.trim()}` : null,
+      ].filter(Boolean)
+      return parts.length ? parts.join(' · ') : 'Skipped'
+    }
+    const parts = [lastPlanned.trim(), weekFeel.trim()].filter(Boolean)
+    return parts.length ? parts.join(' · ') : 'Skipped'
+  }
+
+  function continueQuestion() {
+    const nextAnswers = [...answers, currentAnswer()]
+    setAnswers(nextAnswers)
+    if (step === QUESTIONS.length - 1) {
+      void finish()
+      return
+    }
+    setStep((value) => value + 1)
   }
 
   return (
@@ -68,169 +133,136 @@ export function OnboardingSurveyPage() {
           <AppLogo size={72} />
           <div className="min-w-0 flex-1">
             <p className="text-2xl font-bold tracking-tight">Welcome to Planora</p>
-            <p className="text-sm text-white/85">Tell us what you like so meals fit you from day one.</p>
+            <p className="text-sm text-white/85">A few questions, only this first time.</p>
           </div>
         </div>
-
-        <div className="border-b border-line bg-canvas/40 px-6 py-3">
-          <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted">
-            <span>
-              Step {step + 1} of {STEPS.length}
-            </span>
-            <button
-              type="button"
-              className="text-primary hover:underline disabled:opacity-50"
-              onClick={skipSurvey}
-              disabled={busy}
-            >
-              Skip for now
-            </button>
-          </div>
-          <div className="mt-2 flex gap-1.5">
-            {STEPS.map((item, index) => (
-              <div
-                key={item.id}
-                className={`h-1.5 flex-1 rounded-full ${index <= step ? 'bg-primary' : 'bg-line'}`}
-              />
-            ))}
-          </div>
+        <div className="flex items-center justify-between border-b border-line px-6 py-3 text-xs font-medium text-muted">
+          <span>
+            Question {step + 1} of {QUESTIONS.length}
+          </span>
+          <button type="button" className="text-primary hover:underline disabled:opacity-50" onClick={() => void finish()} disabled={busy}>
+            Skip for now
+          </button>
         </div>
+        <div className="space-y-3 px-6 py-6">
+          {answers.map((answer, index) => (
+            <div key={QUESTIONS[index]} className="space-y-2">
+              <p className="mr-8 rounded-2xl bg-canvas px-3 py-2 text-sm text-ink">{QUESTIONS[index]}</p>
+              <p className="ml-8 rounded-2xl bg-primary px-3 py-2 text-sm text-white">{answer}</p>
+            </div>
+          ))}
+          <p className="mr-8 rounded-2xl bg-canvas px-3 py-2 text-sm text-ink">{QUESTIONS[step]}</p>
 
-        <div className="px-6 py-6">
-          <h1 className="text-xl font-bold text-ink">{current.title}</h1>
-          <p className="mt-1 text-sm text-muted">{current.subtitle}</p>
+          {step === 0 ? (
+            <TextArea
+              rows={3}
+              value={household}
+              onChange={(event) => setHousehold(event.target.value)}
+              placeholder="Example: two adults, and a child who is 8"
+            />
+          ) : null}
 
-          <div className="mt-6 space-y-4">
-            {current.id === 'allergies' ? (
-              <CheckboxOptionGroup
-                label="Food allergies"
-                options={COMMON_ALLERGIES}
-                values={draft.allergies}
-                onChange={(allergies) => setDraft((d) => ({ ...d, allergies }))}
-                hint="Strictly excluded from suggestions."
-                otherPlaceholder="Other allergies (comma-separated)"
-              />
-            ) : null}
-
-            {current.id === 'dietary' ? (
-              <CheckboxOptionGroup
-                label="Dietary restrictions"
-                options={COMMON_DIETARY}
-                values={draft.dietary}
-                onChange={(dietary) => setDraft((d) => ({ ...d, dietary }))}
-                hint="Treated as hard rules for meal matching."
-                otherPlaceholder="Other dietary rules (comma-separated)"
-              />
-            ) : null}
-
-            {current.id === 'favorites' ? (
-              <>
-                <TagField
-                  label="Favorite foods"
-                  value={listToText(draft.favorites)}
-                  onChange={(value) => setDraft((d) => ({ ...d, favorites: textToList(value) }))}
-                  hint="Example: salmon, avocado, pasta"
-                />
-                <TagField
-                  label="Disliked foods"
-                  value={listToText(draft.disliked)}
-                  onChange={(value) => setDraft((d) => ({ ...d, disliked: textToList(value) }))}
-                  hint="Example: cilantro, olives, mushrooms"
-                />
-              </>
-            ) : null}
-
-            {current.id === 'cuisines' ? (
-              <CheckboxOptionGroup
-                label="Preferred cuisines"
-                options={COMMON_CUISINES}
-                values={draft.cuisines}
-                onChange={(cuisines) => setDraft((d) => ({ ...d, cuisines }))}
-                otherPlaceholder="Other cuisines (comma-separated)"
-              />
-            ) : null}
-
-            {current.id === 'extras' ? (
-              <>
-                <div>
-                  <FieldLabel htmlFor="onboarding-skill">Cooking skill level</FieldLabel>
-                  <TextSelect
-                    id="onboarding-skill"
-                    value={draft.skill}
-                    onChange={(e) => setDraft((d) => ({ ...d, skill: e.target.value as SkillLevel }))}
-                  >
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                  </TextSelect>
-                </div>
-                <TagField
-                  label="Available cooking equipment"
-                  value={listToText(draft.equipment)}
-                  onChange={(value) => setDraft((d) => ({ ...d, equipment: textToList(value) }))}
-                  hint="Example: stovetop, oven, air fryer, blender"
-                />
-                <div>
-                  <FieldLabel htmlFor="onboarding-instructions">General instructions for the AI</FieldLabel>
-                  <TextArea
-                    id="onboarding-instructions"
-                    rows={3}
-                    value={draft.instructions}
-                    onChange={(e) => setDraft((d) => ({ ...d, instructions: e.target.value }))}
-                    placeholder="Prefer one-pan dinners. Avoid spicy food on weeknights."
+          {step === 1 ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {COMMON_ALLERGIES.map((allergy) => (
+                  <Chip
+                    key={allergy}
+                    label={allergy}
+                    selected={draft.allergies.includes(allergy)}
+                    onClick={() => setDraft((current) => ({ ...current, allergies: toggleValue(current.allergies, allergy) }))}
                   />
+                ))}
+              </div>
+              <TextArea
+                rows={2}
+                value={otherAllergy}
+                onChange={(event) => setOtherAllergy(event.target.value)}
+                placeholder="Other allergies, separated by commas"
+              />
+            </div>
+          ) : null}
+
+          {step === 2 ? (
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-sm font-medium text-ink">Diets to follow</p>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_DIETARY.map((diet) => (
+                    <Chip
+                      key={diet}
+                      label={diet}
+                      selected={draft.dietary.includes(diet)}
+                      onClick={() => setDraft((current) => ({ ...current, dietary: toggleValue(current.dietary, diet) }))}
+                    />
+                  ))}
                 </div>
-              </>
-            ) : null}
-          </div>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium text-ink">Cuisines you want more of</p>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_CUISINES.map((cuisine) => (
+                    <Chip
+                      key={cuisine}
+                      label={cuisine}
+                      selected={draft.cuisines.includes(cuisine)}
+                      onClick={() => setDraft((current) => ({ ...current, cuisines: toggleValue(current.cuisines, cuisine) }))}
+                    />
+                  ))}
+                </div>
+              </div>
+              <TextArea rows={2} value={likes} onChange={(event) => setLikes(event.target.value)} placeholder="Foods you like, separated by commas" />
+              <TextArea
+                rows={2}
+                value={dislikes}
+                onChange={(event) => setDislikes(event.target.value)}
+                placeholder="Foods to leave out, separated by commas"
+              />
+            </div>
+          ) : null}
 
-          <div className="mt-4">
-            <ErrorText>{error}</ErrorText>
-          </div>
+          {step === 3 ? (
+            <div className="space-y-3">
+              <TextArea
+                rows={2}
+                value={lastPlanned}
+                onChange={(event) => setLastPlanned(event.target.value)}
+                placeholder="Example: last Sunday, or I have not planned in a while"
+              />
+              <TextArea
+                rows={2}
+                value={weekFeel}
+                onChange={(event) => setWeekFeel(event.target.value)}
+                placeholder="Example: lighter lunches and faster dinners"
+              />
+            </div>
+          ) : null}
 
-          <div className="mt-6 flex flex-wrap gap-2">
+          <ErrorText>{error}</ErrorText>
+          <div className="flex flex-wrap gap-2">
             {step > 0 ? (
-              <Button type="button" variant="ghost" onClick={() => setStep((s) => s - 1)} disabled={busy}>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  setAnswers((current) => current.slice(0, -1))
+                  setStep((value) => value - 1)
+                }}
+              >
                 Back
               </Button>
             ) : null}
-            <div className="flex-1" />
-            {isLast ? (
-              <Button type="button" onClick={() => void finish(draft)} disabled={busy}>
-                {busy ? 'Saving…' : 'Finish'}
-              </Button>
-            ) : (
-              <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={busy}>
-                Next
-              </Button>
-            )}
+            <Button type="button" variant="ghost" disabled={busy} onClick={continueQuestion}>
+              Skip this question
+            </Button>
+            <Button type="button" disabled={busy} onClick={continueQuestion}>
+              {busy ? 'Saving…' : step === QUESTIONS.length - 1 ? 'Finish' : 'Continue'}
+            </Button>
           </div>
-          <p className="mt-4 text-xs text-muted">
-            You can change all of this anytime under Food Preferences.
-          </p>
+          <p className="text-xs text-muted">You can change all of this anytime under Food Preferences. Later visits do not ask again.</p>
         </div>
       </div>
-    </div>
-  )
-}
-
-function TagField({
-  label,
-  value,
-  onChange,
-  hint,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  hint?: string
-}) {
-  const id = `onboarding-${label.toLowerCase().replace(/\s+/g, '-')}`
-  return (
-    <div>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <TextArea id={id} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
     </div>
   )
 }

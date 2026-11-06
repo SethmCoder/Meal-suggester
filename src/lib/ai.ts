@@ -39,6 +39,7 @@ export async function rankWithModel(input: {
   dayThemes?: Partial<Record<Weekday, string>>
   foodFocus?: string[]
   mustUseFoods?: string[]
+  likedFoods?: string[]
   timeCaps?: { day: Weekday; slot: MealSlot; maxMinutes: number }[]
 }): Promise<{ reply: string; picks: ModelPick[] } | null> {
   const base = aiBaseUrl()
@@ -64,12 +65,13 @@ export async function rankWithModel(input: {
     'Return exactly one pick for every listed target cell — no more, no fewer when the catalog allows.',
     'Only use day/slot pairs present in targets. Do not invent extra days.',
     'Never assign dessert/sweets to breakfast, lunch, or dinner.',
-    'If foodFocus or mustUseFoods are provided, prefer catalog recipes that include those foods in the name or ingredients.',
+    'If likedFoods are provided, prefer catalog recipes that share those foods when they still fit the slot.',
     'mustUseFoods are items the cook already owns and needs to eat soon (freezer food or food that is expiring). Use them before suggesting meals that ignore them.',
     'Do not claim recipes came from Instagram. Only use the retrieved catalog.',
     'For breakfast targets, prefer egg dishes, oatmeal, pancakes, toast, and similar breakfast foods when requested or appropriate.',
     'When dayThemes are provided, match them as well as the catalog allows.',
-    'Prefer distinct recipes; reuse only if the catalog is smaller than the number of targets.',
+    'Prefer distinct recipes; reuse a recipe only when no unused fitting recipe remains.',
+    'Do not assign breakfast dishes to lunch or dinner when another fitting recipe is in the catalog.',
     'Reuse shared ingredients across meals when useful for shopping.',
     'Optimize for store package sizes: if one meal uses 1 egg, prefer later meals that use more eggs so a dozen is mostly consumed instead of wasted.',
     'Same idea for milk, chicken packs, rice bags, onions, etc. Fill opened packages across the week.',
@@ -89,6 +91,7 @@ export async function rankWithModel(input: {
           request: input.message,
           foodFocus: input.foodFocus ?? [],
           mustUseFoods: input.mustUseFoods ?? [],
+          likedFoods: input.likedFoods ?? [],
           targets: input.targets,
           targetCount,
           dayThemes: input.dayThemes ?? {},

@@ -19,6 +19,7 @@ import { buildShoppingList } from '../lib/ingredients'
 import { downloadMealPlanPdf, emailWeekPlanEnabled, openMealPlanEmail } from '../lib/mealPlanExport'
 import { moveMeal } from '../lib/meals'
 import type { Suggestion } from '../lib/planner'
+import { acceptMeal, loadTaste, mainTaste, noteReject, saveTaste } from '../lib/taste'
 
 export function MealsPage() {
   const { store, profile, persistenceNote } = useSession()
@@ -172,7 +173,7 @@ export function MealsPage() {
     return buildShoppingList(meals, inventory, []).filter((row) => row.status !== 'purchased').length
   }, [week, inventory])
 
-  if (!store || !preferences) {
+  if (!store || !preferences || !profile) {
     return <div className="text-muted">{loading ? 'Loading meals…' : 'Session unavailable.'}</div>
   }
 
@@ -338,6 +339,7 @@ export function MealsPage() {
 
       {week && preferences ? (
         <PlanWholeWeek
+          userId={profile.id}
           inventory={inventory}
           preferences={preferences}
           week={week}
@@ -356,10 +358,27 @@ export function MealsPage() {
               return hit ? { ...cell, meal: hit.meal, finished: false } : cell
             })
             await saveWeek({ ...week, cells })
+            let prefs = preferences
             for (const suggestion of suggestions) {
               await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
+              const learned = acceptMeal(loadTaste(profile.id), { ...suggestion.meal, cuisineHint: suggestion.recipe.cuisineHint }, prefs)
+              saveTaste(profile.id, learned.memory)
+              if (learned.changed) prefs = learned.preferences
+            }
+            if (prefs !== preferences) {
+              await store.savePreferences(prefs)
+              setPreferences(prefs)
             }
             setFeedback(await store.listFeedback())
+          }}
+          onAcceptOne={async (suggestion) => {
+            await updateCell(suggestion.day, suggestion.slot, suggestion.meal)
+            await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
+            setFeedback(await store.listFeedback())
+          }}
+          onSavePreferences={async (next) => {
+            await store.savePreferences(next)
+            setPreferences(next)
           }}
           onEditSuggestion={(suggestion) => {
             setEditor({ day: suggestion.day, slot: suggestion.slot, meal: suggestion.meal })
@@ -455,6 +474,7 @@ export function MealsPage() {
 
       {week && preferences ? (
         <AiChat
+          userId={profile.id}
           inventory={inventory}
           preferences={preferences}
           week={week}
@@ -466,14 +486,30 @@ export function MealsPage() {
             })
             await saveWeek({ ...week, cells })
           }}
+          onSavePreferences={async (next) => {
+            await store.savePreferences(next)
+            setPreferences(next)
+          }}
           onAccept={async (suggestion: Suggestion) => {
             await updateCell(suggestion.day, suggestion.slot, suggestion.meal)
             await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
             setFeedback(await store.listFeedback())
+            if (!preferences) return
+            const learned = acceptMeal(loadTaste(profile.id), { ...suggestion.meal, cuisineHint: suggestion.recipe.cuisineHint }, preferences)
+            saveTaste(profile.id, learned.memory)
+            if (learned.changed) {
+              await store.savePreferences(learned.preferences)
+              setPreferences(learned.preferences)
+            }
+            return learned.note
           }}
           onReject={async (suggestion: Suggestion) => {
             await store.addFeedback({ mealName: suggestion.meal.name, accepted: false })
             setFeedback(await store.listFeedback())
+            const main = mainTaste(suggestion.meal)
+            const rejected = noteReject(loadTaste(profile.id), main)
+            saveTaste(profile.id, rejected.memory)
+            return rejected.question ?? `I'll try a different kind of meal than ${main}.`
           }}
           onEditSuggestion={(suggestion) => {
             setEditor({ day: suggestion.day, slot: suggestion.slot, meal: suggestion.meal })
