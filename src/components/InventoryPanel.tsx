@@ -3,6 +3,7 @@ import type { FoodCategory, InventoryItem } from '../data/types'
 import { CATEGORY_LABELS, FOOD_CATEGORIES, UNITS } from '../data/types'
 import { createId } from '../lib/id'
 import { expiryStatus, todayISO } from '../lib/dates'
+import { duplicateInventoryIds } from '../lib/ingredients'
 import { validateInventoryDraft } from '../lib/validation'
 import { Badge, Button, EmptyState, ErrorText, FieldLabel, TextInput, TextSelect } from './ui'
 
@@ -25,18 +26,25 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState('')
   const today = todayISO()
+  const duplicates = useMemo(() => duplicateInventoryIds(items), [items])
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return items
+    return items.filter((item) => item.name.toLowerCase().includes(needle))
+  }, [items, query])
 
   const grouped = useMemo(() => {
     const map = new Map<FoodCategory, InventoryItem[]>()
     for (const category of FOOD_CATEGORIES) map.set(category, [])
-    for (const item of items) {
+    for (const item of visible) {
       const list = map.get(item.category) ?? []
       list.push(item)
       map.set(item.category, list)
     }
     return map
-  }, [items])
+  }, [visible])
 
   function startEdit(item: InventoryItem) {
     setEditingId(item.id)
@@ -158,10 +166,28 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
         </div>
       </form>
       <ErrorText>{error}</ErrorText>
+      {items.length ? (
+        <div className="mt-4">
+          <FieldLabel htmlFor="inv-search">Search</FieldLabel>
+          <TextInput
+            id="inv-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Find a food"
+          />
+        </div>
+      ) : null}
+      {duplicates.size ? (
+        <p className="mt-3 text-sm text-muted">
+          Some items share a name. They stay separate until you edit or remove one.
+        </p>
+      ) : null}
 
       <div className="mt-6 space-y-5">
         {!items.length ? (
           <EmptyState title="Inventory is empty" body="Add produce, pantry staples, and leftovers you already have." />
+        ) : !visible.length ? (
+          <EmptyState title="No matching food" body="Try a different name." />
         ) : (
           FOOD_CATEGORIES.map((category) => {
             const list = grouped.get(category) ?? []
@@ -183,8 +209,11 @@ export function InventoryPanel({ items, onSave, onDelete }: InventoryPanelProps)
                               {item.quantity} {item.unit}
                             </p>
                           </div>
-                          {status === 'expired' ? <Badge tone="danger">Expired</Badge> : null}
-                          {status === 'soon' ? <Badge tone="warning">Soon</Badge> : null}
+                          <div className="flex flex-col items-end gap-1">
+                            {duplicates.has(item.id) ? <Badge tone="warning">Possible duplicate</Badge> : null}
+                            {status === 'expired' ? <Badge tone="danger">Expired</Badge> : null}
+                            {status === 'soon' ? <Badge tone="warning">Soon</Badge> : null}
+                          </div>
                         </div>
                         {item.expiresOn ? <p className="mt-1 text-xs text-muted">Expires {item.expiresOn}</p> : null}
                         <div className="mt-3 flex gap-2">

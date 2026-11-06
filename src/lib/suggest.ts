@@ -3,7 +3,7 @@ import { MEAL_SLOTS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { aiConfigured, rankWithModel } from './ai'
 import { constraintUpdates, parsePlanRequest, targetCells } from './constraints'
 import { allergyConflict, dietConflict, dietMealDbCategories, dietSearchTerms } from './diet'
-import { ingredientKey } from './ingredients'
+import { ingredientKey, usableInventory } from './ingredients'
 import { eatingOutSuggestions } from './eatingOut'
 import { applyLeftoverPlacements } from './leftovers'
 import { fitsMealSlot } from './mealSlots'
@@ -41,6 +41,8 @@ export interface SuggestOptions {
   recurringCaps?: RecurringCap[]
   /** Days filled with an Eating out placeholder instead of a cooked recipe. */
   eatOutDays?: Weekday[]
+  /** Prefer recipes that use food already on hand, including for a full week. */
+  forcePreferInventory?: boolean
 }
 
 function searchTerms(
@@ -222,12 +224,14 @@ export async function suggestMeals(input: {
   )
 
   // Prefer inventory only when the user asked for it and did not name specific foods.
-  const preferInventory = request.preferInventory && !hasFoodFocus && !wantWeek
+  const preferInventory =
+    Boolean(input.options?.forcePreferInventory) || (request.preferInventory && !hasFoodFocus && !wantWeek)
+  const stock = usableInventory(input.inventory)
 
   const local = selectSuggestions({
     recipes,
     targets,
-    inventory: input.inventory,
+    inventory: stock,
     preferences: input.preferences,
     feedback: input.feedback,
     preferInventory,
@@ -256,7 +260,7 @@ export async function suggestMeals(input: {
       recipes,
       targets: targets.map((cell) => ({ day: cell.day, slot: cell.slot })),
       preferences: input.preferences,
-      inventoryNames: input.inventory.map((item) => item.name),
+      inventoryNames: stock.map((item) => item.name),
       dayThemes: input.options?.dayThemes,
       foodFocus,
       mustUseFoods: mustUse,
@@ -289,7 +293,7 @@ export async function suggestMeals(input: {
       existing: suggestions,
       recipes,
       targets,
-      inventory: input.inventory,
+      inventory: stock,
       preferences: input.preferences,
       feedback: input.feedback,
       dayThemes: input.options?.dayThemes,

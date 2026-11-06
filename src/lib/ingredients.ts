@@ -1,4 +1,5 @@
 import type { FoodCategory, Ingredient, InventoryItem } from '../data/types'
+import { expiryStatus, todayISO } from './dates'
 
 type Family = 'mass' | 'volume' | 'count'
 
@@ -130,6 +131,24 @@ function singular(word: string): string {
   return word
 }
 
+/** Ids of items that share a normalized name with at least one other item. */
+export function duplicateInventoryIds(items: { id: string; name: string }[]): Set<string> {
+  const groups = new Map<string, string[]>()
+  for (const item of items) {
+    const key = ingredientKey(item.name)
+    if (!key) continue
+    const list = groups.get(key) ?? []
+    list.push(item.id)
+    groups.set(key, list)
+  }
+  const ids = new Set<string>()
+  for (const list of groups.values()) {
+    if (list.length < 2) continue
+    for (const id of list) ids.add(id)
+  }
+  return ids
+}
+
 export function ingredientKey(name: string): string {
   return name
     .toLowerCase()
@@ -201,6 +220,32 @@ export interface StockResult {
   shortfall: number | null
 }
 
+/** Expired food is not treated as stock you can still cook from or skip buying. */
+export function usableInventory(inventory: InventoryItem[], today = todayISO()): InventoryItem[] {
+  return inventory.filter((item) => expiryStatus(item.expiresOn, today) !== 'expired')
+}
+
+export function storagePlace(item: Pick<InventoryItem, 'category' | 'name'>): string {
+  if (item.category === 'frozen' || /\bfrozen\b/i.test(item.name)) return 'Freezer'
+  if (item.category === 'pantry') return 'Pantry'
+  if (item.category === 'other') return 'Other'
+  return 'Refrigerator'
+}
+
+/** Add onto an existing row when the name and unit already match. Otherwise keep the new row. */
+export function mergeInventoryAdd(existing: InventoryItem[], incoming: InventoryItem): InventoryItem {
+  const key = ingredientKey(incoming.name)
+  const unit = canonicalUnit(incoming.unit)
+  if (!key || !unit) return incoming
+  const match = existing.find((item) => ingredientKey(item.name) === key && canonicalUnit(item.unit) === unit)
+  if (!match) return incoming
+  return {
+    ...match,
+    quantity: roundQty(match.quantity + incoming.quantity),
+    expiresOn: match.expiresOn ?? incoming.expiresOn,
+  }
+}
+
 export function matchIngredient(ingredient: Ingredient, inventory: InventoryItem[]): StockResult {
   const key = ingredientKey(ingredient.name)
   const rows = key ? inventory.filter((item) => ingredientKey(item.name) === key) : []
@@ -254,8 +299,9 @@ export function summarizeStock(ingredients: Ingredient[], inventory: InventoryIt
 } {
   let missingCount = 0
   let checkCount = 0
+  const stock = usableInventory(inventory)
   for (const ingredient of ingredients) {
-    const result = matchIngredient(ingredient, inventory)
+    const result = matchIngredient(ingredient, stock)
     if (result.status === 'missing' || result.status === 'partial') missingCount += 1
     else if (result.status === 'check') checkCount += 1
   }
@@ -324,13 +370,14 @@ export function buildShoppingList(
   purchasedKeys: string[],
 ): ShoppingRow[] {
   const purchased = new Set(purchasedKeys)
+  const stock = usableInventory(inventory)
   const groups = new Map<string, ShoppingGroup>()
 
   for (const meal of mealsForShopping(meals)) {
     for (const ingredient of meal.ingredients) {
       const key = ingredientKey(ingredient.name)
       if (!key) continue
-      const match = matchIngredient(ingredient, inventory)
+      const match = matchIngredient(ingredient, stock)
       const group = groups.get(key) ?? {
         key,
         name: ingredient.name.trim(),

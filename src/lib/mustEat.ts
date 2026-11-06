@@ -1,5 +1,6 @@
 import type { InventoryItem } from '../data/types'
 import { expiryStatus, todayISO } from './dates'
+import { storagePlace } from './ingredients'
 
 export type MustEatReason = 'expired' | 'expiring' | 'freezer'
 
@@ -16,12 +17,14 @@ export function foodsToUseFirst(inventory: InventoryItem[], today = todayISO()):
   for (const item of inventory) {
     const status = expiryStatus(item.expiresOn, today)
     const frozen = item.category === 'frozen' || /\bfrozen\b/i.test(item.name)
+    const amount = `${item.quantity} ${item.unit}`
+    const place = storagePlace(item)
     if (status === 'expired') {
       rows.push({
         id: item.id,
         name: item.name,
         reason: 'expired',
-        detail: item.expiresOn ? `Expired ${item.expiresOn}` : 'Expired',
+        detail: `${amount} · ${place} · ${item.expiresOn ? `Expired ${item.expiresOn}` : 'Expired'}`,
       })
       continue
     }
@@ -30,7 +33,7 @@ export function foodsToUseFirst(inventory: InventoryItem[], today = todayISO()):
         id: item.id,
         name: item.name,
         reason: 'expiring',
-        detail: item.expiresOn ? `Use by ${item.expiresOn}` : 'Expiring soon',
+        detail: `${amount} · ${place} · ${item.expiresOn ? `Use by ${item.expiresOn}` : 'Expiring soon'}`,
       })
       continue
     }
@@ -39,7 +42,7 @@ export function foodsToUseFirst(inventory: InventoryItem[], today = todayISO()):
         id: item.id,
         name: item.name,
         reason: 'freezer',
-        detail: 'In the freezer',
+        detail: `${amount} · ${place}`,
       })
     }
   }

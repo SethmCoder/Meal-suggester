@@ -1,7 +1,7 @@
-import type { InventoryItem, Meal, MealCell, MealFeedback, Preferences, RetrievedRecipe, WeekPlan } from '../data/types'
+import type { InventoryItem, Meal, MealCell, MealFeedback, MealSlot, Preferences, RetrievedRecipe, Weekday, WeekPlan } from '../data/types'
 import { aiConfigured, optimizeWeekWithModel } from './ai'
 import { allergyConflict, dietConflict } from './diet'
-import { buildShoppingList, ingredientKey } from './ingredients'
+import { buildShoppingList, ingredientKey, usableInventory } from './ingredients'
 import { fitsMealSlot } from './mealSlots'
 import { recipeToMeal } from './planner'
 import { retrieveRecipes } from './recipes'
@@ -21,6 +21,14 @@ function overlapCount(recipe: RetrievedRecipe, pool: Set<string>): number {
 
 function uniqueNewCount(recipe: RetrievedRecipe, pool: Set<string>): number {
   return mealIngredientKeys(recipe).filter((key) => !pool.has(key)).length
+}
+
+export interface ShoppingSwap {
+  day: Weekday
+  slot: MealSlot
+  fromName: string
+  toName: string
+  reason: string
 }
 
 function shoppingScore(before: number, after: number, swaps: number): string {
@@ -110,11 +118,19 @@ export async function optimizeWeekForShopping(input: {
   preferences: Preferences
   feedback: MealFeedback[]
   goal?: string
-}): Promise<{ week: WeekPlan; reply: string; swaps: number; beforeCount: number; afterCount: number }> {
+}): Promise<{
+  week: WeekPlan
+  reply: string
+  swaps: number
+  beforeCount: number
+  afterCount: number
+  proposals: ShoppingSwap[]
+}> {
+  const stock = usableInventory(input.inventory)
   const filled = input.week.cells.filter((cell) => cell.meal)
   const beforeRows = buildShoppingList(
     filled.map((cell) => cell.meal!),
-    input.inventory,
+    stock,
     [],
   ).filter((row) => row.status !== 'purchased')
   const beforeCount = beforeRows.length
@@ -126,6 +142,7 @@ export async function optimizeWeekForShopping(input: {
       swaps: 0,
       beforeCount,
       afterCount: beforeCount,
+      proposals: [],
     }
   }
 
@@ -144,9 +161,12 @@ export async function optimizeWeekForShopping(input: {
   })
 
   let cells = input.week.cells.map((cell) => ({ ...cell }))
-  let swaps = 0
+  const originalNames = new Map(
+    input.week.cells.filter((cell) => cell.meal).map((cell) => [`${cell.day}:${cell.slot}`, cell.meal!.name]),
+  )
+  const reasons = new Map<string, string>()
   const usedIds = new Set<string>()
-  let sharedPool = collectSharedPool(cells, input.inventory)
+  let sharedPool = collectSharedPool(cells, stock)
   let modelReply = ''
 
   // Pass 1: local overlap swaps. Leave finished meals as eaten.
@@ -156,8 +176,8 @@ export async function optimizeWeekForShopping(input: {
     if (!swap) continue
     cell.meal = swap.meal
     usedIds.add(swap.recipe.providerId)
-    swaps += 1
-    sharedPool = collectSharedPool(cells, input.inventory)
+    reasons.set(`${cell.day}:${cell.slot}`, swap.reason)
+    sharedPool = collectSharedPool(cells, stock)
   }
 
   // Pass 2: model-guided swaps when AI is configured.
@@ -173,7 +193,7 @@ export async function optimizeWeekForShopping(input: {
         })),
       recipes,
       preferences: input.preferences,
-      inventoryNames: input.inventory.map((item) => item.name),
+      inventoryNames: stock.map((item) => item.name),
       shoppingItemCount: beforeCount,
       goal: input.goal,
     })
@@ -191,19 +211,32 @@ export async function optimizeWeekForShopping(input: {
         if (index < 0 || !cells[index].meal || cells[index].finished || cells[index].meal!.isLeftover || cells[index].meal!.eatingOut) continue
         if (cells[index].meal!.name === recipe.name) continue
         cells[index] = { ...cells[index], meal: recipeToMeal(recipe) }
-        swaps += 1
+        reasons.set(`${replacement.day}:${replacement.slot}`, replacement.why || `Fewer groceries than ${originalNames.get(`${replacement.day}:${replacement.slot}`) ?? 'the current meal'}`)
       }
     }
   }
 
   const afterRows = buildShoppingList(
     cells.filter((cell) => cell.meal).map((cell) => cell.meal!),
-    input.inventory,
+    stock,
     [],
   ).filter((row) => row.status !== 'purchased')
   const afterCount = afterRows.length
   const week = { ...input.week, cells }
+  const proposals: ShoppingSwap[] = []
+  for (const cell of cells) {
+    const fromName = originalNames.get(`${cell.day}:${cell.slot}`)
+    if (!fromName || !cell.meal || cell.meal.name === fromName) continue
+    proposals.push({
+      day: cell.day,
+      slot: cell.slot,
+      fromName,
+      toName: cell.meal.name,
+      reason: reasons.get(`${cell.day}:${cell.slot}`) || 'Uses ingredients already needed this week',
+    })
+  }
+  const swaps = proposals.length
   const reply = [shoppingScore(beforeCount, afterCount, swaps), modelReply].filter(Boolean).join(' ')
 
-  return { week, reply, swaps, beforeCount, afterCount }
+  return { week, reply, swaps, beforeCount, afterCount, proposals }
 }

@@ -4,9 +4,9 @@ import { ChevronDown, Loader2, ReceiptText } from 'lucide-react'
 import { Badge, Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import { addLedgerReceipt, listLedgerReceipts } from '../data/ledgerStorage'
-import type { MealSlot, Purchase, Receipt, Weekday } from '../data/types'
+import type { Consumption, InventoryItem, MealSlot, Purchase, Receipt, Weekday } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
-import { formatWeekRange } from '../lib/dates'
+import { expiryStatus, formatWeekRange, todayISO } from '../lib/dates'
 import { roundMoney } from '../lib/finance'
 import { formatQuantity } from '../lib/ingredients'
 import { receiptFromScan, scanReceiptPhoto } from '../lib/receipts'
@@ -66,6 +66,8 @@ export function ExpensesPage() {
   const uploadRef = useRef<HTMLInputElement>(null)
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [consumptions, setConsumptions] = useState<Consumption[]>([])
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [scanNote, setScanNote] = useState<string | null>(null)
@@ -81,9 +83,15 @@ export function ExpensesPage() {
       setLoading(true)
       setError(null)
       try {
-        const next = await store.listPurchases()
+        const [next, used, stock] = await Promise.all([
+          store.listPurchases(),
+          store.listConsumptions(),
+          store.listInventory(),
+        ])
         if (!cancelled) {
           setPurchases(next)
+          setConsumptions(used)
+          setInventory(stock)
           setReceipts(listLedgerReceipts(profile.id))
         }
       } catch (err) {
@@ -106,6 +114,10 @@ export function ExpensesPage() {
     () => roundMoney(purchases.reduce((sum, row) => sum + (row.estimatedCostUsd ?? 0), 0)),
     [purchases],
   )
+  const expiredItems = useMemo(() => {
+    const today = todayISO()
+    return inventory.filter((item) => expiryStatus(item.expiresOn, today) === 'expired')
+  }, [inventory])
 
   async function loadWeekMeals(weekStart: string) {
     if (weekMeals[weekStart] || !store) return
@@ -320,6 +332,59 @@ export function ExpensesPage() {
                 </div>
               )
             })
+          )}
+        </div>
+      </section>
+
+      <section className="soft-shadow rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <h2 className="text-lg font-bold text-ink">Used from inventory</h2>
+        <p className="mt-1 text-sm text-muted">
+          Ingredients already deducted when a meal was marked finished. These amounts are not prices.
+        </p>
+        {loading ? (
+          <p className="mt-3 text-sm text-muted">Loading inventory use…</p>
+        ) : consumptions.length ? (
+          <ul className="mt-4 space-y-2">
+            {consumptions.slice(0, 20).map((entry) => (
+              <li key={entry.id} className="rounded-xl border border-line bg-canvas/40 p-3">
+                <p className="font-semibold text-ink">
+                  {entry.mealName}
+                  <span className="ml-2 text-sm font-normal text-muted">
+                    {WEEKDAY_LABELS[entry.day]} {SLOT_LABELS[entry.slot]}
+                  </span>
+                </p>
+                {entry.items.length ? (
+                  <ul className="mt-1 text-sm text-muted">
+                    {entry.items.map((item, index) => (
+                      <li key={`${entry.id}-${index}`}>
+                        {formatQuantity(item.quantity, item.unit)} {item.name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-sm text-muted">{entry.note || 'No inventory was deducted.'}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted">No meals have been marked finished yet.</p>
+        )}
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-ink">Expired in inventory</h3>
+          {expiredItems.length ? (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {expiredItems.map((item) => (
+                <li key={item.id}>
+                  <Badge tone="danger">
+                    {item.name}
+                    {item.expiresOn ? ` · ${item.expiresOn}` : ''}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-muted">Nothing in inventory is past its expiration date.</p>
           )}
         </div>
       </section>

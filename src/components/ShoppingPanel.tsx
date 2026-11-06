@@ -9,9 +9,10 @@ interface ShoppingPanelProps {
   prices?: Record<string, IngredientPrice | undefined>
   onTogglePurchased: (key: string, purchased: boolean) => Promise<void>
   onAddToInventory: (item: InventoryItem) => Promise<void>
+  plannedMeals?: number
 }
 
-export function ShoppingPanel({ rows, prices, onTogglePurchased, onAddToInventory }: ShoppingPanelProps) {
+export function ShoppingPanel({ rows, prices, onTogglePurchased, onAddToInventory, plannedMeals = 0 }: ShoppingPanelProps) {
   return (
     <div data-tutorial="shopping" className="soft-shadow rounded-2xl border border-line bg-surface p-4 md:p-5">
       <h2 className="text-lg font-bold text-ink">What to buy</h2>
@@ -19,7 +20,14 @@ export function ShoppingPanel({ rows, prices, onTogglePurchased, onAddToInventor
 
       <div className="mt-4 space-y-2">
         {!rows.length ? (
-          <EmptyState title="Nothing to buy" body="Plan meals or clear purchased items to refresh this list." />
+          <EmptyState
+            title="Nothing to buy"
+            body={
+              plannedMeals > 0
+                ? 'Planned meals are covered by food you can still use.'
+                : 'Plan meals to build this list.'
+            }
+          />
         ) : (
           rows.map((row) => (
             <div key={row.key} className="flex flex-col gap-3 rounded-xl border border-line bg-canvas/40 p-3 sm:flex-row sm:items-center">

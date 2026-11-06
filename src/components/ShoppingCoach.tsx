@@ -29,7 +29,7 @@ export function ShoppingCoach({ busy, onAsk }: ShoppingCoachProps) {
     <section className="soft-shadow rounded-2xl border border-line bg-surface p-4 sm:p-5">
       <h2 className="text-lg font-bold text-ink">Buy fewer ingredients</h2>
       <p className="mt-1 text-sm text-muted">
-        Ask whether a different set of meals could shrink this list. Planora swaps in retrieved recipes that reuse what you already need.
+        Ask whether a different set of meals could shrink this list. Proposed swaps stay on this page until you apply them.
       </p>
       <form className="mt-3 space-y-3" onSubmit={(event) => void onSubmit(event)}>
         <TextArea

@@ -3,10 +3,11 @@ import { CalendarRange, Loader2, Sparkles } from 'lucide-react'
 import type { InventoryItem, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
 import type { RecurringCap } from '../lib/timePatterns'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
+import { foodsToUseFirst } from '../lib/mustEat'
 import { suggestMeals } from '../lib/suggest'
 import type { Suggestion } from '../lib/planner'
 import { MealThumb } from './MealCellCard'
-import { Badge, Button, FieldLabel, TextArea, TextInput } from './ui'
+import { Badge, Button, FieldLabel, TextArea, TextInput, TextSelect } from './ui'
 
 interface PlanWholeWeekProps {
   inventory: InventoryItem[]
@@ -20,6 +21,16 @@ interface PlanWholeWeekProps {
 }
 
 const DEFAULT_SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner']
+
+type PlanStyle = 'balanced' | 'on-hand' | 'quick' | 'low-waste' | 'fewer-items'
+
+const PLAN_STYLES: { id: PlanStyle; label: string }[] = [
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'on-hand', label: 'Use what I have' },
+  { id: 'quick', label: 'Quick meals' },
+  { id: 'low-waste', label: 'Low waste' },
+  { id: 'fewer-items', label: 'Fewer groceries' },
+]
 
 export function PlanWholeWeek({
   inventory,
@@ -41,6 +52,7 @@ export function PlanWholeWeek({
   const [notes, setNotes] = useState('')
   const [slots, setSlots] = useState<MealSlot[]>(DEFAULT_SLOTS)
   const [emptyOnly, setEmptyOnly] = useState(true)
+  const [planStyle, setPlanStyle] = useState<PlanStyle>('balanced')
   const [eatOutDays, setEatOutDays] = useState<Weekday[]>([])
   const [busy, setBusy] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -76,6 +88,9 @@ export function PlanWholeWeek({
     setSuggestions([])
     setMode(null)
     try {
+      const expiring = foodsToUseFirst(inventory)
+        .filter((food) => food.reason !== 'freezer')
+        .map((food) => food.name)
       const lines = [
         'Plan the whole week.',
         ...WEEKDAYS.map((day) => {
@@ -83,6 +98,10 @@ export function PlanWholeWeek({
           return theme ? `${WEEKDAY_LABELS[day]}: ${theme}` : null
         }).filter(Boolean),
         notes.trim() ? `Extra notes: ${notes.trim()}` : null,
+        planStyle === 'on-hand' || planStyle === 'fewer-items' ? 'Use what I already have.' : null,
+        planStyle === 'quick' ? 'Keep each meal under 30 minutes.' : null,
+        planStyle === 'low-waste' && expiring.length ? `Use food that is expiring: ${expiring.join(', ')}.` : null,
+        planStyle === 'fewer-items' ? 'Reuse ingredients across meals and buy fewer groceries.' : null,
         `Fill slots: ${slots.join(', ')}.`,
         emptyOnly ? 'Only fill empty meal slots.' : 'Replace meals already on the planner if needed.',
       ].filter(Boolean)
@@ -102,6 +121,8 @@ export function PlanWholeWeek({
           ) as Partial<Record<Weekday, string>>,
           recurringCaps,
           eatOutDays,
+          forcePreferInventory: planStyle === 'on-hand' || planStyle === 'fewer-items',
+          mustUse: planStyle === 'low-waste' ? expiring : undefined,
         },
       })
 
@@ -148,7 +169,7 @@ export function PlanWholeWeek({
         </div>
         <Button type="button" onClick={() => void planWeek()} disabled={busy} className="shrink-0">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {busy ? 'Planning…' : 'AI Plan whole week'}
+          {busy ? 'Planning…' : 'Plan my week'}
         </Button>
       </div>
 
@@ -175,6 +196,17 @@ export function PlanWholeWeek({
             </label>
           </div>
         ))}
+      </div>
+
+      <div className="mt-4">
+        <FieldLabel htmlFor="plan-style">Planning style</FieldLabel>
+        <TextSelect id="plan-style" value={planStyle} onChange={(event) => setPlanStyle(event.target.value as PlanStyle)}>
+          {PLAN_STYLES.map((style) => (
+            <option key={style.id} value={style.id}>
+              {style.label}
+            </option>
+          ))}
+        </TextSelect>
       </div>
 
       <div className="mt-4">

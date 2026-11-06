@@ -9,7 +9,7 @@ import { UseUpFoods } from '../components/UseUpFoods'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { InventoryItem, Meal, MealCell, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
-import { MEAL_SLOTS, SLOT_LABELS, WEEKDAYS } from '../data/types'
+import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { consumeMealFromInventory } from '../lib/consume'
 import type { MustEatFood } from '../lib/mustEat'
 import { suggestMeals } from '../lib/suggest'
@@ -32,6 +32,7 @@ export function MealsPage() {
   const [finishingKey, setFinishingKey] = useState<string | null>(null)
   const [useUpBusy, setUseUpBusy] = useState(false)
   const [useUpNote, setUseUpNote] = useState<string | null>(null)
+  const [foodProposal, setFoodProposal] = useState<{ reply: string; suggestions: Suggestion[] } | null>(null)
   const [editor, setEditor] = useState<{ day: Weekday; slot: MealSlot; meal: Meal | null } | null>(null)
   const [details, setDetails] = useState<Meal | null>(null)
 
@@ -260,18 +261,13 @@ export function MealsPage() {
                 feedback,
                 options: { wantWeek: true, emptyOnly: openSlots > 0, mustUse: names, recurringCaps },
               })
-              const byCell = new Map(result.suggestions.map((item) => [`${item.day}:${item.slot}`, item]))
-              const cells = week.cells.map((cell) => {
-                const hit = byCell.get(`${cell.day}:${cell.slot}`)
-                if (!hit) return cell
-                return { ...cell, meal: hit.meal, finished: false }
-              })
-              await saveWeek({ ...week, cells })
-              for (const suggestion of result.suggestions) {
-                await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
+              if (!result.suggestions.length) {
+                setUseUpNote(result.reply || 'No retrieved recipe used those foods.')
+                setFoodProposal(null)
+                return
               }
-              setFeedback(await store.listFeedback())
-              setUseUpNote(result.reply)
+              setFoodProposal({ reply: result.reply, suggestions: result.suggestions })
+              setUseUpNote(null)
             } catch (err) {
               setError(err instanceof Error ? err.message : 'Could not plan around those foods.')
             } finally {
@@ -279,6 +275,65 @@ export function MealsPage() {
             }
           }}
         />
+      ) : null}
+
+      {foodProposal && week ? (
+        <section className="soft-shadow rounded-2xl border border-line bg-surface p-4 sm:p-5">
+          <h2 className="text-lg font-bold text-ink">Review these meals</h2>
+          <p className="mt-1 text-sm text-muted">{foodProposal.reply}</p>
+          <ul className="mt-3 space-y-2">
+            {foodProposal.suggestions.map((suggestion) => (
+              <li key={`${suggestion.day}:${suggestion.slot}`} className="text-sm text-ink">
+                <span className="font-semibold">
+                  {WEEKDAY_LABELS[suggestion.day]} {SLOT_LABELS[suggestion.slot]}:
+                </span>{' '}
+                {suggestion.meal.name}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex gap-2">
+            <Button
+              type="button"
+              disabled={useUpBusy}
+              onClick={() => {
+                if (!store || !week) return
+                void (async () => {
+                  setUseUpBusy(true)
+                  try {
+                    const byCell = new Map(foodProposal.suggestions.map((item) => [`${item.day}:${item.slot}`, item]))
+                    const cells = week.cells.map((cell) => {
+                      const hit = byCell.get(`${cell.day}:${cell.slot}`)
+                      return hit ? { ...cell, meal: hit.meal, finished: false } : cell
+                    })
+                    await saveWeek({ ...week, cells })
+                    for (const suggestion of foodProposal.suggestions) {
+                      await store.addFeedback({ mealName: suggestion.meal.name, accepted: true })
+                    }
+                    setFeedback(await store.listFeedback())
+                    setUseUpNote('Added those meals to the week.')
+                    setFoodProposal(null)
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Could not add those meals.')
+                  } finally {
+                    setUseUpBusy(false)
+                  }
+                })()
+              }}
+            >
+              Apply meals
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setFoodProposal(null)
+                setUseUpNote('No meals were added.')
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </section>
       ) : null}
 
       {week && preferences ? (

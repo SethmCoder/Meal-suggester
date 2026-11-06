@@ -7,11 +7,12 @@ import { ShoppingPanel } from '../components/ShoppingPanel'
 import { Button, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { InventoryItem, ManualShoppingItem, MealFeedback, Preferences, WeekPlan } from '../data/types'
+import { SLOT_LABELS, WEEKDAY_LABELS } from '../data/types'
 import { addWeeks, formatWeekRange, mondayOf } from '../lib/dates'
 import { estimatePurchaseCost } from '../lib/finance'
 import { buildShoppingList, ingredientKey } from '../lib/ingredients'
 import { downloadShoppingList, loadOfflineShopping } from '../lib/offlineShopping'
-import { optimizeWeekForShopping } from '../lib/optimizeShopping'
+import { optimizeWeekForShopping, type ShoppingSwap } from '../lib/optimizeShopping'
 import { estimateIngredientPrices, requestDeviceLocation, type IngredientPrice, type NearbyStore } from '../lib/openPrices'
 import {
   detectRunningLow,
@@ -35,6 +36,11 @@ export function ShoppingListPage() {
   const [error, setError] = useState<string | null>(null)
   const [optimizeBusy, setOptimizeBusy] = useState(false)
   const [optimizeMessage, setOptimizeMessage] = useState<string | null>(null)
+  const [proposal, setProposal] = useState<{
+    week: WeekPlan
+    reply: string
+    proposals: ShoppingSwap[]
+  } | null>(null)
   const [runningLow, setRunningLow] = useState<RunningLowItem[]>([])
   const [runningLowBusy, setRunningLowBusy] = useState(false)
   const [runningLowMessage, setRunningLowMessage] = useState<string | null>(null)
@@ -167,6 +173,7 @@ export function ShoppingListPage() {
     if (!store || !week || !preferences || optimizeBusy) return 'Plan meals before asking to shorten the list.'
     setOptimizeBusy(true)
     setOptimizeMessage(null)
+    setProposal(null)
     setError(null)
     try {
       const result = await optimizeWeekForShopping({
@@ -176,9 +183,11 @@ export function ShoppingListPage() {
         feedback,
         goal,
       })
-      setWeek(result.week)
-      await store.saveWeek(result.week)
-      setOptimizeMessage(result.reply)
+      if (!result.proposals.length) {
+        setOptimizeMessage(result.reply)
+        return result.reply
+      }
+      setProposal({ week: result.week, reply: result.reply, proposals: result.proposals })
       return result.reply
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not optimize meals for shopping.'
@@ -187,6 +196,27 @@ export function ShoppingListPage() {
     } finally {
       setOptimizeBusy(false)
     }
+  }
+
+  async function applyProposal() {
+    if (!store || !proposal) return
+    setOptimizeBusy(true)
+    setError(null)
+    try {
+      await store.saveWeek(proposal.week)
+      setWeek(proposal.week)
+      setOptimizeMessage(proposal.reply)
+      setProposal(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the meal changes.')
+    } finally {
+      setOptimizeBusy(false)
+    }
+  }
+
+  function cancelProposal() {
+    setProposal(null)
+    setOptimizeMessage('No meals were changed.')
   }
 
   async function loadNearbyPrices() {
@@ -256,6 +286,8 @@ export function ShoppingListPage() {
             className="px-3"
             onClick={() => {
               const next = addWeeks(weekStart, -1)
+              setProposal(null)
+              setOptimizeMessage(null)
               setWeekStart(next)
               void reload(next)
             }}
@@ -270,6 +302,8 @@ export function ShoppingListPage() {
             className="px-3"
             onClick={() => {
               const next = addWeeks(weekStart, 1)
+              setProposal(null)
+              setOptimizeMessage(null)
               setWeekStart(next)
               void reload(next)
             }}
@@ -287,7 +321,7 @@ export function ShoppingListPage() {
           <div>
             <h2 className="text-lg font-bold text-ink">Optimize for fewer groceries</h2>
             <p className="mt-1 text-sm text-muted">
-              Adjust planned meals so ingredients are reused across the week, then refresh what you still need to buy.
+              Planora suggests meal swaps that reuse ingredients. Nothing is saved until you apply the changes.
             </p>
           </div>
           <Button type="button" onClick={() => void optimize()} disabled={optimizeBusy || loading || plannedMeals.length < 2}>
@@ -295,6 +329,31 @@ export function ShoppingListPage() {
             {optimizeBusy ? 'Optimizing…' : 'Optimize meals'}
           </Button>
         </div>
+        {proposal ? (
+          <div className="mt-4 rounded-xl border border-line bg-canvas/40 p-3">
+            <p className="text-sm font-semibold text-ink">Review these meal changes</p>
+            <p className="mt-1 text-sm text-muted">{proposal.reply}</p>
+            <ul className="mt-3 space-y-2">
+              {proposal.proposals.map((swap) => (
+                <li key={`${swap.day}:${swap.slot}`} className="text-sm text-ink">
+                  <span className="font-semibold">
+                    {WEEKDAY_LABELS[swap.day]} {SLOT_LABELS[swap.slot]}:
+                  </span>{' '}
+                  {swap.fromName} → {swap.toName}
+                  <span className="mt-0.5 block text-muted">{swap.reason}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 flex gap-2">
+              <Button type="button" onClick={() => void applyProposal()} disabled={optimizeBusy}>
+                Apply changes
+              </Button>
+              <Button type="button" variant="ghost" onClick={cancelProposal} disabled={optimizeBusy}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
         {optimizeMessage ? <p className="mt-3 text-sm text-ink">{optimizeMessage}</p> : null}
         <p className="mt-3 text-xs text-muted">
           {plannedMeals.length
@@ -358,6 +417,7 @@ export function ShoppingListPage() {
           </section>
           <ShoppingCoach busy={optimizeBusy} onAsk={(goal) => optimize(goal)} />
           <ShoppingPanel
+            plannedMeals={plannedMeals.length}
             rows={shoppingRows}
             prices={prices}
             onTogglePurchased={async (key, purchasedFlag) => {

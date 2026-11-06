@@ -6,7 +6,7 @@ import { Badge, EmptyState } from '../components/ui'
 import { useSession } from '../context/SessionContext'
 import type { Consumption, InventoryItem } from '../data/types'
 import { SLOT_LABELS, WEEKDAY_LABELS } from '../data/types'
-import { formatQuantity } from '../lib/ingredients'
+import { formatQuantity, mergeInventoryAdd } from '../lib/ingredients'
 
 function formatWhen(iso: string) {
   try {
@@ -101,8 +101,13 @@ export function InventoryPage() {
       <PhotoInventoryScan
         guided={!loading && items.length === 0}
         onAddItems={async (next) => {
+          let current = await store.listInventory()
           for (const item of next) {
-            await store.upsertInventory(item)
+            const merged = mergeInventoryAdd(current, item)
+            await store.upsertInventory(merged)
+            current = current.some((row) => row.id === merged.id)
+              ? current.map((row) => (row.id === merged.id ? merged : row))
+              : [...current, merged]
           }
           setItems(await store.listInventory())
         }}

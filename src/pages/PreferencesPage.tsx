@@ -62,7 +62,7 @@ export function PreferencesPage() {
     <div data-tutorial="preferences" className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-bold tracking-tight text-ink">Food preferences</h1>
       <p className="mt-1 text-sm text-muted">
-        The assistant treats allergies and dietary restrictions as hard constraints, never optional hints.
+        Allergies and dietary restrictions are hard constraints. Planora will not suggest a meal that lists a saved allergy. It cannot verify package labels or cross-contact, so check those yourself.
       </p>
 
       <form className="soft-shadow mt-6 space-y-4 rounded-2xl border border-line bg-surface p-5" onSubmit={onSubmit}>

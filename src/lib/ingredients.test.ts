@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parseIngredientLine } from './ingredients'
+import type { InventoryItem } from '../data/types'
+import { buildShoppingList, duplicateInventoryIds, mergeInventoryAdd, parseIngredientLine, usableInventory } from './ingredients'
 
 describe('parseIngredientLine', () => {
   it('parses MealDB glued gram measures like 500g Ricotta', () => {
@@ -57,5 +58,46 @@ describe('parseIngredientLine', () => {
       quantity: null,
       unit: 'g',
     })
+  })
+})
+
+describe('duplicateInventoryIds', () => {
+  it('flags items that share a normalized name and leaves unique items alone', () => {
+    const ids = duplicateInventoryIds([
+      { id: 'a', name: 'Eggs' },
+      { id: 'b', name: 'egg' },
+      { id: 'c', name: 'Spinach' },
+    ])
+    expect([...ids].sort()).toEqual(['a', 'b'])
+  })
+})
+
+function stock(partial: Partial<InventoryItem> & Pick<InventoryItem, 'id' | 'name'>): InventoryItem {
+  return {
+    quantity: 1,
+    unit: 'piece',
+    expiresOn: null,
+    category: 'other',
+    ...partial,
+  }
+}
+
+describe('usable inventory and merges', () => {
+  it('does not treat expired food as something you can skip buying', () => {
+    const inventory = [stock({ id: 'milk', name: 'Milk', quantity: 1, unit: 'l', expiresOn: '2020-01-01', category: 'dairy' })]
+    expect(usableInventory(inventory, '2026-11-05')).toEqual([])
+    const rows = buildShoppingList(
+      [{ name: 'Porridge', ingredients: [{ name: 'Milk', quantity: 1, unit: 'l' }] }],
+      inventory,
+      [],
+    )
+    expect(rows.map((row) => row.name)).toContain('Milk')
+  })
+
+  it('adds quantity onto the same unit instead of creating another row', () => {
+    const existing = [stock({ id: 'eggs', name: 'Eggs', quantity: 6, unit: 'piece', category: 'dairy' })]
+    const merged = mergeInventoryAdd(existing, stock({ id: 'new', name: 'egg', quantity: 2, unit: 'piece', category: 'dairy' }))
+    expect(merged.id).toBe('eggs')
+    expect(merged.quantity).toBe(8)
   })
 })
