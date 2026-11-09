@@ -149,8 +149,32 @@ export function duplicateInventoryIds(items: { id: string; name: string }[]): Se
   return ids
 }
 
+const MEASURE_PHRASES = /^(to taste|as needed|as required|for garnish|for serving|optional)\s*[,:-]?\s*/i
+
+/** Fix common recipe-source typos and measure phrases stuck in the ingredient name. */
+export function cleanIngredientName(name: string): string {
+  let text = name.trim().replace(/\s+/g, ' ')
+  if (!text) return name.trim()
+  text = text.replace(MEASURE_PHRASES, '')
+  text = text.replace(/\byolkes\b/gi, 'yolks')
+  text = text.replace(/\byolks?\s+eggs?\b/gi, 'Egg Yolks')
+  text = text.replace(/\beggs?\s+yolks?\b/gi, 'Egg Yolks')
+  text = text.replace(/\s+/g, ' ').trim()
+  return text || name.trim()
+}
+
+function preferIngredientLabel(current: string, next: string): string {
+  const left = cleanIngredientName(current)
+  const right = cleanIngredientName(next)
+  if (!left) return right
+  if (!right) return left
+  if (MEASURE_PHRASES.test(current) && !MEASURE_PHRASES.test(next)) return right
+  if (right.length < left.length) return right
+  return left
+}
+
 export function ingredientKey(name: string): string {
-  return name
+  return cleanIngredientName(name)
     .toLowerCase()
     .replace(/&/g, ' and ')
     .replace(/[^a-z\s]/g, ' ')
@@ -207,7 +231,7 @@ export function parseIngredientLine(line: string): Ingredient | null {
     unit = canonicalUnit(tokens[0])
     tokens.shift()
   }
-  const name = tokens.join(' ').replace(/[,;]+$/g, '').trim()
+  const name = cleanIngredientName(tokens.join(' ').replace(/[,;]+$/g, '').trim())
   if (!name) return null
   return { name, quantity: amount, unit }
 }
@@ -378,9 +402,10 @@ export function buildShoppingList(
       const key = ingredientKey(ingredient.name)
       if (!key) continue
       const match = matchIngredient(ingredient, stock)
+      const label = cleanIngredientName(ingredient.name)
       const group = groups.get(key) ?? {
         key,
-        name: ingredient.name.trim(),
+        name: label,
         mealNames: new Set<string>(),
         family: null,
         needBase: 0,
@@ -391,6 +416,7 @@ export function buildShoppingList(
         sawGap: false,
         allCovered: true,
       }
+      group.name = preferIngredientLabel(group.name, label)
       group.mealNames.add(meal.name)
       if (match.status !== 'have') group.allCovered = false
       if (match.status === 'check') group.sawCheck = true

@@ -1,6 +1,6 @@
 import type { RetrievedRecipe } from '../data/types'
 import { estimateMinutes } from './meals'
-import { parseIngredientLine } from './ingredients'
+import { parseIngredientLine, cleanIngredientName } from './ingredients'
 import { displaySourceName, preferredPublishers, type RecipePublisher } from './recipeSources'
 
 const MEALDB = 'https://www.themealdb.com/api/json/v1/1'
@@ -30,7 +30,7 @@ function mapMealDb(meal: MealDbMeal): RetrievedRecipe {
     if (!name) continue
     const measure = meal[`strMeasure${index}`]?.trim()
     const parsed = measure ? parseIngredientLine(`${measure} ${name}`) : null
-    ingredients.push(parsed ?? { name, quantity: null, unit: null })
+    ingredients.push(parsed ?? { name: cleanIngredientName(name), quantity: null, unit: null })
   }
   const instructions = (meal.strInstructions ?? '')
     .split(/\r?\n+/)

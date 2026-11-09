@@ -1,6 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import type { InventoryItem } from '../data/types'
-import { buildShoppingList, duplicateInventoryIds, mergeInventoryAdd, parseIngredientLine, usableInventory } from './ingredients'
+import { buildShoppingList, cleanIngredientName, duplicateInventoryIds, ingredientKey, mergeInventoryAdd, parseIngredientLine, usableInventory } from './ingredients'
+
+describe('cleanIngredientName', () => {
+  it('drops measure phrases stuck in the name', () => {
+    expect(cleanIngredientName('To taste Red Pepper Flakes')).toBe('Red Pepper Flakes')
+    expect(ingredientKey('To taste Red Pepper Flakes')).toBe('red pepper flake')
+  })
+
+  it('fixes common egg yolk typos and word order', () => {
+    expect(cleanIngredientName('Yolkes Egg')).toBe('Egg Yolks')
+    expect(ingredientKey('Yolkes Egg')).toBe('egg yolk')
+    expect(ingredientKey('Egg Yolks')).toBe('egg yolk')
+  })
+
+  it('keeps cleaned names on the shopping list', () => {
+    const rows = buildShoppingList(
+      [
+        {
+          name: 'Salmon Eggs Eggs Benedict',
+          ingredients: [
+            { name: 'To taste Red Pepper Flakes', quantity: null, unit: null },
+            { name: 'Yolkes Egg', quantity: 2, unit: 'piece' },
+          ],
+        },
+      ],
+      [],
+      [],
+    )
+    expect(rows.map((row) => row.name).sort()).toEqual(['Egg Yolks', 'Red Pepper Flakes'])
+  })
+})
 
 describe('parseIngredientLine', () => {
   it('parses MealDB glued gram measures like 500g Ricotta', () => {
