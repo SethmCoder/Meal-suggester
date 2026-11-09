@@ -6,7 +6,7 @@ import { allergyConflict, dietConflict, dietMealDbCategories, dietSearchTerms } 
 import { ingredientKey, usableInventory } from './ingredients'
 import { eatingOutSuggestions } from './eatingOut'
 import { applyLeftoverPlacements } from './leftovers'
-import { breakfastLike, fitsMealSlot } from './mealSlots'
+import { breakfastLike, fitsMealSlot, sweetCourseLike } from './mealSlots'
 import { totalMinutes } from './meals'
 import { describeAppliedPattern, PATTERN_NOTE, type RecurringCap } from './timePatterns'
 import {
@@ -50,6 +50,8 @@ export interface SuggestOptions {
   excludeIds?: string[]
   /** Meal names already shown or rejected for this slot. */
   excludeNames?: string[]
+  /** After the cook rejected a dessert/sweet, skip other sweets for this request. */
+  excludeSweetCourses?: boolean
   /** Ingredients the cook just asked to leave out. */
   avoidIngredients?: string[]
   /** Ingredients and cuisines learned from meals they kept. */
@@ -399,6 +401,7 @@ function filterRecipes(
   const withoutShown = recipes.filter((recipe) => {
     if (excludedIds.has(recipe.providerId)) return false
     if (excludedNames.has(dishKey(recipe))) return false
+    if (options?.excludeSweetCourses && sweetCourseLike(recipe)) return false
     return true
   })
   if (!avoid.size) return withoutShown
@@ -419,7 +422,7 @@ function unusedFittingRecipe(
   return recipes.some((recipe) => {
     if (recipe.providerId === currentId) return false
     if (!fitsMealSlot(recipe, slot)) return false
-    if ((slot === 'lunch' || slot === 'dinner') && breakfastLike(recipe)) return false
+    if ((slot === 'lunch' || slot === 'dinner') && (breakfastLike(recipe) || sweetCourseLike(recipe))) return false
     const key = dishKey(recipe)
     return !usedIds.has(recipe.providerId) && !usedNames.has(key)
   })
@@ -506,11 +509,11 @@ function picksToSuggestions(
     const alreadyUsed = usedRecipe.has(pick.providerId) || usedNames.has(nameKey)
     const alternative = unusedFittingRecipe(recipes, pick.slot, usedRecipe, usedNames, recipe.providerId)
     if (alreadyUsed && (alternative || !options?.allowReuse)) continue
+    if (!fitsMealSlot(recipe, pick.slot)) continue
     if ((pick.slot === 'lunch' || pick.slot === 'dinner') && breakfastLike(recipe) && alternative) continue
     const names = recipe.ingredients.map((item) => item.name)
     if (allergyConflict(names, recipe.name, preferences.allergies)) continue
     if (dietConflict(names, recipe.name, preferences.dietary)) continue
-    if (!fitsMealSlot(recipe, pick.slot)) continue
     const cell = targets.find((item) => item.day === pick.day && item.slot === pick.slot)
     const cap = cell?.constraint?.maxMinutes ?? null
     const minutes = totalMinutes(recipe)

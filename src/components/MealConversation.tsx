@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { InventoryItem, Meal, MealFeedback, MealSlot, Preferences, Weekday, WeekPlan } from '../data/types'
 import { MEAL_SLOTS, SLOT_LABELS, WEEKDAY_LABELS, WEEKDAYS } from '../data/types'
 import { buildShoppingList, matchIngredient, usableInventory } from '../lib/ingredients'
+import { sweetCourseLike } from '../lib/mealSlots'
 import { totalMinutes } from '../lib/meals'
 import { foodsToUseFirst } from '../lib/mustEat'
 import type { Suggestion } from '../lib/planner'
@@ -116,6 +117,7 @@ export function MealConversation({
   const [excludedIds, setExcludedIds] = useState<string[]>([])
   const [excludedNames, setExcludedNames] = useState<string[]>([])
   const [avoid, setAvoid] = useState<string[]>([])
+  const [banSweets, setBanSweets] = useState(false)
   const started = useRef(false)
   const useSoon = foodsToUseFirst(inventory).map((food) => food.name)
 
@@ -123,7 +125,17 @@ export function MealConversation({
     setTurns((current) => [...current.map((item) => ({ ...item, actions: false })), turn])
   }
 
-  async function showSlot(index: number, weekPlan: WeekPlan, prefs: Preferences, history: MealFeedback[], shownIds: string[], shownNames: string[], avoided: string[], cookedTurns: number) {
+  async function showSlot(
+    index: number,
+    weekPlan: WeekPlan,
+    prefs: Preferences,
+    history: MealFeedback[],
+    shownIds: string[],
+    shownNames: string[],
+    avoided: string[],
+    cookedTurns: number,
+    skipSweets = banSweets,
+  ) {
     let cursorIndex = index
     while (cursorIndex < queue.length && eatOutDays.includes(queue[cursorIndex].day)) {
       const item = queue[cursorIndex]
@@ -138,6 +150,7 @@ export function MealConversation({
     setExcludedIds(shownIds)
     setExcludedNames(shownNames)
     setAvoid(avoided)
+    setBanSweets(skipSweets)
     if (cursorIndex >= queue.length) {
       pushTurn({ id: crypto.randomUUID(), role: 'assistant', text: 'The week is filled.' })
       return
@@ -173,6 +186,7 @@ export function MealConversation({
           excludeIds: shownIds,
           excludeNames: shownNames,
           avoidIngredients: avoided,
+          excludeSweetCourses: skipSweets && (item.slot === 'lunch' || item.slot === 'dinner'),
           preferTerms: preferTermsFrom(loadTaste(userId)),
           userId,
           mustUse: soon,
@@ -269,14 +283,38 @@ export function MealConversation({
     saveTaste(userId, rejected.memory)
     const shownIds = [...excludedIds, suggestion.recipe.providerId]
     const shownNames = [...excludedNames, suggestion.meal.name]
+    const history = [
+      ...localFeedback,
+      { id: crypto.randomUUID(), mealName: suggestion.meal.name, accepted: false, createdAt: new Date().toISOString() },
+    ]
+    setLocalFeedback(history)
+    const skipSweets =
+      banSweets ||
+      ((suggestion.slot === 'lunch' || suggestion.slot === 'dinner') && sweetCourseLike(suggestion.recipe))
     if (rejected.question) {
       setExcludedIds(shownIds)
       setExcludedNames(shownNames)
-      pushTurn({ id: crypto.randomUUID(), role: 'assistant', text: rejected.question, clarify: main, actions: true })
+      setBanSweets(skipSweets)
+      pushTurn({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        text: skipSweets
+          ? `${rejected.question} I'll also skip other desserts and sweet dishes for this meal.`
+          : rejected.question,
+        clarify: main,
+        actions: true,
+      })
       return
     }
     pushTurn({ id: crypto.randomUUID(), role: 'user', text: 'Try another' })
-    await showSlot(cursor, localWeek, localPreferences, localFeedback, shownIds, shownNames, avoid, cookedCount)
+    if (skipSweets) {
+      pushTurn({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        text: "I'll skip desserts and other sweet dishes for this meal.",
+      })
+    }
+    await showSlot(cursor, localWeek, localPreferences, history, shownIds, shownNames, avoid, cookedCount, skipSweets)
   }
 
   async function answerClarification(ingredient: string, choice: 'ingredient' | 'dish') {
@@ -333,6 +371,9 @@ export function MealConversation({
           excludeIds: [...excludedIds, suggestion.recipe.providerId],
           excludeNames: [...excludedNames, suggestion.meal.name],
           avoidIngredients: [...avoid, ...reading.disliked],
+          excludeSweetCourses:
+            (banSweets || sweetCourseLike(suggestion.recipe)) &&
+            (suggestion.slot === 'lunch' || suggestion.slot === 'dinner'),
           preferTerms: [...preferTermsFrom(loadTaste(userId)), ...reading.focus],
           userId,
           forcePreferInventory: planStyle === 'on-hand' || planStyle === 'fewer-items',

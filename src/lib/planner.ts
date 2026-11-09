@@ -2,7 +2,7 @@ import type { InventoryItem, Meal, MealCell, MealFeedback, Preferences, Retrieve
 import { allergyConflict, containsTerm, dietConflict, dislikedConflict } from './diet'
 import { createId } from './id'
 import { ingredientKey, matchIngredient } from './ingredients'
-import { breakfastLike, fitsMealSlot, slotScore } from './mealSlots'
+import { breakfastLike, fitsMealSlot, slotScore, sweetCourseLike } from './mealSlots'
 import { idealWords } from './idealPlan'
 import { openPackageGaps, packageFillBonus } from './packages'
 import { totalMinutes } from './meals'
@@ -323,8 +323,14 @@ export function selectSuggestions(input: {
         }
       })
       .sort((a, b) => b.value - a.value || a.recipe.name.localeCompare(b.recipe.name))
+    const nonSweet = timed.filter((item) => !sweetCourseLike(item.recipe) && !breakfastLike(item.recipe))
     const nonBreakfast = timed.filter((item) => !breakfastLike(item.recipe))
-    const slotPool = cell.slot !== 'breakfast' && nonBreakfast.length ? nonBreakfast : timed
+    const slotPool =
+      cell.slot !== 'breakfast' && nonSweet.length
+        ? nonSweet
+        : cell.slot !== 'breakfast' && nonBreakfast.length
+          ? nonBreakfast
+          : timed
     const unused = slotPool.filter((item) => !used.has(item.recipe.providerId) && !usedNames.has(dishKey(item.recipe)))
     const pool = unused.length ? unused : input.allowReuse ? slotPool : []
     const themed = theme ? pool.filter((item) => matchesDayTheme(item.recipe, theme)) : []

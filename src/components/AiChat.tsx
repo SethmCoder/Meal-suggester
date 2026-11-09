@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { MessageCircle, X } from 'lucide-react'
 import type { InventoryItem, Meal, MealFeedback, Preferences, WeekPlan } from '../data/types'
 import type { RecurringCap } from '../lib/timePatterns'
+import { sweetCourseLike } from '../lib/mealSlots'
 import { suggestMeals } from '../lib/suggest'
 import { applyDislikes, interpretClarification, loadTaste, preferTermsFrom, readReply } from '../lib/taste'
 import type { Suggestion } from '../lib/planner'
@@ -54,6 +55,9 @@ export function AiChat({
     },
   ])
   const [pendingIngredient, setPendingIngredient] = useState<string | null>(null)
+  const [excludedIds, setExcludedIds] = useState<string[]>([])
+  const [excludedNames, setExcludedNames] = useState<string[]>([])
+  const [banSweets, setBanSweets] = useState(false)
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -98,6 +102,9 @@ export function AiChat({
         options: {
           recurringCaps,
           avoidIngredients,
+          excludeIds: excludedIds,
+          excludeNames: excludedNames,
+          excludeSweetCourses: banSweets,
           preferTerms: [...preferTermsFrom(loadTaste(userId)), ...focus],
           userId,
         },
@@ -185,12 +192,21 @@ export function AiChat({
                         }}
                         onReject={async () => {
                           const note = await onReject(suggestion)
+                          setExcludedIds((current) => [...current, suggestion.recipe.providerId])
+                          setExcludedNames((current) => [...current, suggestion.meal.name])
+                          const sweet =
+                            (suggestion.slot === 'lunch' || suggestion.slot === 'dinner') &&
+                            sweetCourseLike(suggestion.recipe)
+                          if (sweet) setBanSweets(true)
                           if (note?.startsWith('Is it the ')) {
                             const ingredient = note.match(/^Is it the ([^,]+),/)?.[1]
                             if (ingredient) setPendingIngredient(ingredient)
                           }
-                          if (note) {
-                            setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', text: note }])
+                          const text = sweet
+                            ? [note, "I'll skip desserts and other sweet dishes next."].filter(Boolean).join(' ')
+                            : note
+                          if (text) {
+                            setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', text }])
                           }
                         }}
                         onEdit={() => onEditSuggestion(suggestion)}
